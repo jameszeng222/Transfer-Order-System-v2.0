@@ -6,6 +6,7 @@ import DashboardPage from './pages/dashboard/DashboardPage';
 import OrderListPage from './pages/orders/OrderListPage';
 import OrderDetailPage from './pages/orders/OrderDetailPage';
 import ImportPage from './pages/import/ImportPage';
+import TrackingPage from './pages/tracking/TrackingPage';
 import { useAuthStore } from './store/authStore';
 import { api } from './api/client';
 
@@ -33,6 +34,7 @@ function AppRoutes() {
       <Route path="/orders" element={<ProtectedRoute><Layout><OrderListPage /></Layout></ProtectedRoute>} />
       <Route path="/orders/:transferNo" element={<ProtectedRoute><Layout><OrderDetailPage /></Layout></ProtectedRoute>} />
       <Route path="/imports" element={<ProtectedRoute><Layout><ImportPage /></Layout></ProtectedRoute>} />
+      <Route path="/tracking" element={<ProtectedRoute><Layout><TrackingPage /></Layout></ProtectedRoute>} />
     </Routes>
   );
 }
