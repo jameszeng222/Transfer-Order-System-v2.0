@@ -12,9 +12,10 @@ const config: Knex.Config = {
   },
   useNullAsDefault: true,
   pool: {
-    afterCreate: (conn: any) => {
+    afterCreate: (conn: any, done: any) => {
       conn.pragma('journal_mode = WAL');
       conn.pragma('foreign_keys = ON');
+      done(null, conn);
     },
   },
   migrations: {
