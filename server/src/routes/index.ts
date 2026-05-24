@@ -6,6 +6,7 @@ import carriers from './carriers.js';
 import teams from './teams.js';
 import users from './users.js';
 import imports from './imports.js';
+import orders from './orders.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const routes = new Hono();
@@ -18,11 +19,13 @@ routes.use('/carriers/*', authMiddleware);
 routes.use('/teams/*', authMiddleware);
 routes.use('/users/*', authMiddleware);
 routes.use('/imports/*', authMiddleware);
+routes.use('/orders/*', authMiddleware);
 
 routes.route('/warehouses', warehouses);
 routes.route('/carriers', carriers);
 routes.route('/teams', teams);
 routes.route('/users', users);
 routes.route('/imports', imports);
+routes.route('/orders', orders);
 
 export default routes;

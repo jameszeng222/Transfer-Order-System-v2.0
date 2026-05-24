@@ -3,6 +3,8 @@ import { useEffect } from 'react';
 import Layout from './components/Layout';
 import LoginPage from './pages/auth/LoginPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
+import OrderListPage from './pages/orders/OrderListPage';
+import OrderDetailPage from './pages/orders/OrderDetailPage';
 import { useAuthStore } from './store/authStore';
 import { api } from './api/client';
 
@@ -27,6 +29,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={token ? <Navigate to="/" /> : <LoginPage />} />
       <Route path="/" element={<ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>} />
+      <Route path="/orders" element={<ProtectedRoute><Layout><OrderListPage /></Layout></ProtectedRoute>} />
+      <Route path="/orders/:transferNo" element={<ProtectedRoute><Layout><OrderDetailPage /></Layout></ProtectedRoute>} />
     </Routes>
   );
 }

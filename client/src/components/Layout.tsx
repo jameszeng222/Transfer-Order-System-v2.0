@@ -25,7 +25,7 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { label: '数据看板', icon: LayoutDashboard, path: '/' },
-  { label: '调拨单列表', icon: FileText, path: '/transfers', permission: 'transfer:view' },
+  { label: '调拨单列表', icon: FileText, path: '/orders', permission: 'transfer:view' },
   { label: '在途追踪', icon: Truck, path: '/tracking', permission: 'tracking:view' },
   { label: '导入管理', icon: Upload, path: '/imports', permission: 'import:manage' },
   { label: '异常管理', icon: AlertTriangle, path: '/discrepancies', permission: 'discrepancy:view' },
@@ -39,7 +39,7 @@ const menuItems: MenuItem[] = [
 
 const pageTitles: Record<string, string> = {
   '/': '数据看板',
-  '/transfers': '调拨单列表',
+  '/orders': '调拨单列表',
   '/tracking': '在途追踪',
   '/imports': '导入管理',
   '/discrepancies': '异常管理',
@@ -85,7 +85,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 py-2 overflow-y-auto">
           {visibleItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+            const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
             return (
               <button
                 key={item.path}
