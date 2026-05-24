@@ -1,6 +1,57 @@
 import * as XLSX from 'xlsx';
 import { db } from '../db/index.js';
 
+const OUTBOUND_COLUMN_MAP: Record<string, string> = {
+  '第三方入库单号': 'inbound_order_no',
+  'SKU编码': 'sku_code',
+  '实际出库数量': 'outbound_qty',
+  '出库时间': 'outbound_time',
+  '出库单号': 'outbound_order_no',
+};
+
+const INBOUND_RETURN_COLUMN_MAP: Record<string, string> = {
+  '第三方入库单号': 'inbound_order_no',
+  'SKU编码': 'sku_code',
+  '实际入库数量': 'inbound_qty',
+  '入库时间': 'inbound_time',
+};
+
+const LOGISTICS_COLUMN_MAP: Record<string, string> = {
+  '第三方入库单号': 'inbound_order_no',
+  '物流商': 'logistics_carrier',
+  '物流单号': 'logistics_tracking_no',
+  '提货时间': 'pickup_time',
+  '离港时间': 'depart_time',
+  '到港时间': 'arrive_port_time',
+  '清关时间': 'clearance_time',
+  '尾程提取时间': 'last_mile_pickup_time',
+  '签收时间': 'delivery_time',
+  '是否报关': 'is_customs_declared',
+  '报关工厂': 'customs_factory',
+  '是否查验': 'is_inspected',
+  '尾程类型': 'last_mile_type',
+  '尾程渠道': 'last_mile_channel',
+};
+
+const LOGISTICS_EVENT_TYPE_MAP: Record<string, string> = {
+  '已发货': 'SHIPPED',
+  '已到港口': 'ARRIVED_PORT',
+  '清关中': 'CLEARING',
+  '清关完成': 'CLEARED',
+  '已提柜': 'PICKED_UP',
+  '派送中': 'DELIVERING',
+  '已签收': 'SIGNED',
+  '异常': 'ABNORMAL',
+};
+
+const LOGISTICS_EVENT_COLUMN_MAP: Record<string, string> = {
+  '第三方入库单号': 'inbound_order_no',
+  '事件时间': 'event_time',
+  '事件类型': 'event_type',
+  '事件描述': 'event_desc',
+  '位置': 'location',
+};
+
 const COLUMN_MAP: Record<string, string> = {
   '第三方入库单号': 'inbound_order_no',
   'ERP单号': 'erp_order_no',
@@ -414,6 +465,480 @@ export async function importExcel(buffer: ArrayBuffer, operator: string): Promis
   };
 }
 
+function parseExcelDate(value: any): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'number') {
+    const date = XLSX.SSF.parse_date_code(value);
+    if (date) {
+      const d = new Date(date.y, date.m - 1, date.d, date.H || 0, date.M || 0, date.S || 0);
+      return d.toISOString();
+    }
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  return undefined;
+}
+
+function mapRowsWithColumnMap(headers: string[], rows: any[][], columnMap: Record<string, string>): ParsedRow[] {
+  const fieldHeaders = headers.map((h) => columnMap[h] || h);
+  return rows.map((row, idx) => {
+    const mapped: ParsedRow = { _rowIndex: idx + 2 };
+    fieldHeaders.forEach((field, colIdx) => {
+      if (field) {
+        mapped[field] = row[colIdx];
+      }
+    });
+    return mapped;
+  });
+}
+
+export async function importOutboundReturn(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
+  const { headers, rows } = parseExcel(buffer);
+  if (headers.length === 0 || rows.length === 0) {
+    return { total: 0, success: 0, failed: 0, errors: [{ row: 0, message: 'Excel文件为空或无有效数据' }], createdOrders: 0, updatedOrders: 0 };
+  }
+
+  const parsedRows = mapRowsWithColumnMap(headers, rows, OUTBOUND_COLUMN_MAP);
+  const errors: RowError[] = [];
+  const validRows: ParsedRow[] = [];
+
+  for (const row of parsedRows) {
+    if (!row.inbound_order_no || !row.sku_code || row.outbound_qty === undefined || row.outbound_qty === '') {
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号/SKU编码/实际出库数量' });
+    } else if (isNaN(Number(row.outbound_qty))) {
+      errors.push({ row: row._rowIndex, message: '数量格式错误: 实际出库数量' });
+    } else {
+      row.outbound_qty = Math.round(Number(row.outbound_qty));
+      validRows.push(row);
+    }
+  }
+
+  const orderGroups: Record<string, ParsedRow[]> = {};
+  for (const row of validRows) {
+    const key = String(row.inbound_order_no);
+    if (!orderGroups[key]) orderGroups[key] = [];
+    orderGroups[key].push(row);
+  }
+
+  let updatedOrders = 0;
+  const orderErrors: RowError[] = [];
+
+  await db.transaction(async (trx) => {
+    for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
+      try {
+        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        if (!order) {
+          for (const row of groupRows) {
+            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
+          }
+          continue;
+        }
+
+        const orderUpdates: Record<string, any> = { update_time: new Date().toISOString() };
+        if (groupRows[0].outbound_order_no) {
+          orderUpdates.outbound_order_no = String(groupRows[0].outbound_order_no);
+        }
+
+        let hasOutboundQty = false;
+        for (const row of groupRows) {
+          const item = await trx('transfer_order_items')
+            .where({ transfer_no: order.transfer_no, sku_code: String(row.sku_code) })
+            .first();
+          if (!item) {
+            orderErrors.push({ row: row._rowIndex, message: `SKU ${row.sku_code} 在调拨单 ${order.transfer_no} 中不存在` });
+            continue;
+          }
+
+          const outboundQty = row.outbound_qty;
+          const outboundDiff = outboundQty - item.expected_qty;
+
+          await trx('transfer_order_items').where({ id: item.id }).update({
+            outbound_qty: outboundQty,
+            outbound_diff: outboundDiff,
+          });
+
+          if (outboundQty > 0) hasOutboundQty = true;
+
+          if (outboundDiff !== 0) {
+            await trx('discrepancy_records').insert({
+              transfer_no: order.transfer_no,
+              sku_code: String(row.sku_code),
+              discrepancy_category: 'QUANTITY_DIFF',
+              discrepancy_type: outboundDiff < 0 ? 'SHORT_SHIPMENT' : 'OVER_SHIPMENT',
+              discrepancy_qty: Math.abs(outboundDiff),
+              status: 'PENDING',
+              create_time: new Date().toISOString(),
+              update_time: new Date().toISOString(),
+            });
+          }
+        }
+
+        if (hasOutboundQty && order.status === 'PENDING_OUTBOUND') {
+          orderUpdates.status = 'OUTBOUNDED';
+          if (!order.pickup_time && groupRows[0].outbound_time) {
+            orderUpdates.pickup_time = parseExcelDate(groupRows[0].outbound_time) || new Date().toISOString();
+          }
+        }
+
+        await trx('transfer_orders').where({ id: order.id }).update(orderUpdates);
+
+        await trx('change_logs').insert({
+          record_type: 'transfer_order',
+          record_id: order.id,
+          transfer_no: order.transfer_no,
+          field_name: 'IMPORT_OUTBOUND',
+          old_value: '',
+          new_value: `${groupRows.length} rows`,
+          change_source: 'IMPORT',
+          operator,
+          reason: '出库回传导入',
+        });
+
+        updatedOrders++;
+      } catch (err: any) {
+        for (const row of groupRows) {
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 出库回传失败: ${err.message}` });
+        }
+      }
+    }
+  });
+
+  const allErrors = [...errors, ...orderErrors];
+  const successCount = validRows.length - orderErrors.length;
+
+  return {
+    total: parsedRows.length,
+    success: successCount,
+    failed: allErrors.length,
+    errors: allErrors,
+    createdOrders: 0,
+    updatedOrders,
+  };
+}
+
+export async function importInboundReturn(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
+  const { headers, rows } = parseExcel(buffer);
+  if (headers.length === 0 || rows.length === 0) {
+    return { total: 0, success: 0, failed: 0, errors: [{ row: 0, message: 'Excel文件为空或无有效数据' }], createdOrders: 0, updatedOrders: 0 };
+  }
+
+  const parsedRows = mapRowsWithColumnMap(headers, rows, INBOUND_RETURN_COLUMN_MAP);
+  const errors: RowError[] = [];
+  const validRows: ParsedRow[] = [];
+
+  for (const row of parsedRows) {
+    if (!row.inbound_order_no || !row.sku_code || row.inbound_qty === undefined || row.inbound_qty === '') {
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号/SKU编码/实际入库数量' });
+    } else if (isNaN(Number(row.inbound_qty))) {
+      errors.push({ row: row._rowIndex, message: '数量格式错误: 实际入库数量' });
+    } else {
+      row.inbound_qty = Math.round(Number(row.inbound_qty));
+      validRows.push(row);
+    }
+  }
+
+  const orderGroups: Record<string, ParsedRow[]> = {};
+  for (const row of validRows) {
+    const key = String(row.inbound_order_no);
+    if (!orderGroups[key]) orderGroups[key] = [];
+    orderGroups[key].push(row);
+  }
+
+  let updatedOrders = 0;
+  const orderErrors: RowError[] = [];
+
+  await db.transaction(async (trx) => {
+    for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
+      try {
+        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        if (!order) {
+          for (const row of groupRows) {
+            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
+          }
+          continue;
+        }
+
+        const orderUpdates: Record<string, any> = { update_time: new Date().toISOString() };
+        let hasInboundQty = false;
+
+        for (const row of groupRows) {
+          const item = await trx('transfer_order_items')
+            .where({ transfer_no: order.transfer_no, sku_code: String(row.sku_code) })
+            .first();
+          if (!item) {
+            orderErrors.push({ row: row._rowIndex, message: `SKU ${row.sku_code} 在调拨单 ${order.transfer_no} 中不存在` });
+            continue;
+          }
+
+          const inboundQty = row.inbound_qty;
+          const inboundDiff = inboundQty - (item.outbound_qty || 0);
+          const totalDiff = inboundQty - item.expected_qty;
+
+          await trx('transfer_order_items').where({ id: item.id }).update({
+            inbound_qty: inboundQty,
+            inbound_diff: inboundDiff,
+            total_diff: totalDiff,
+          });
+
+          if (inboundQty > 0) hasInboundQty = true;
+
+          if (totalDiff !== 0) {
+            await trx('discrepancy_records').insert({
+              transfer_no: order.transfer_no,
+              sku_code: String(row.sku_code),
+              discrepancy_category: 'QUANTITY_DIFF',
+              discrepancy_type: totalDiff < 0 ? 'SHORT_SHIPMENT' : 'OVER_SHIPMENT',
+              discrepancy_qty: Math.abs(totalDiff),
+              status: 'PENDING',
+              create_time: new Date().toISOString(),
+              update_time: new Date().toISOString(),
+            });
+          }
+        }
+
+        if (hasInboundQty && order.status === 'IN_TRANSIT') {
+          orderUpdates.status = 'RECEIVED';
+          orderUpdates.delivery_time = new Date().toISOString();
+        }
+
+        await trx('transfer_orders').where({ id: order.id }).update(orderUpdates);
+
+        await trx('change_logs').insert({
+          record_type: 'transfer_order',
+          record_id: order.id,
+          transfer_no: order.transfer_no,
+          field_name: 'IMPORT_INBOUND',
+          old_value: '',
+          new_value: `${groupRows.length} rows`,
+          change_source: 'IMPORT',
+          operator,
+          reason: '入库回传导入',
+        });
+
+        updatedOrders++;
+      } catch (err: any) {
+        for (const row of groupRows) {
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 入库回传失败: ${err.message}` });
+        }
+      }
+    }
+  });
+
+  const allErrors = [...errors, ...orderErrors];
+  const successCount = validRows.length - orderErrors.length;
+
+  return {
+    total: parsedRows.length,
+    success: successCount,
+    failed: allErrors.length,
+    errors: allErrors,
+    createdOrders: 0,
+    updatedOrders,
+  };
+}
+
+export async function importLogisticsInfo(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
+  const { headers, rows } = parseExcel(buffer);
+  if (headers.length === 0 || rows.length === 0) {
+    return { total: 0, success: 0, failed: 0, errors: [{ row: 0, message: 'Excel文件为空或无有效数据' }], createdOrders: 0, updatedOrders: 0 };
+  }
+
+  const parsedRows = mapRowsWithColumnMap(headers, rows, LOGISTICS_COLUMN_MAP);
+  const errors: RowError[] = [];
+  const validRows: ParsedRow[] = [];
+
+  for (const row of parsedRows) {
+    if (!row.inbound_order_no) {
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号' });
+    } else {
+      validRows.push(row);
+    }
+  }
+
+  const orderGroups: Record<string, ParsedRow[]> = {};
+  for (const row of validRows) {
+    const key = String(row.inbound_order_no);
+    if (!orderGroups[key]) orderGroups[key] = [];
+    orderGroups[key].push(row);
+  }
+
+  let updatedOrders = 0;
+  const orderErrors: RowError[] = [];
+
+  const LOGISTICS_FIELDS = [
+    'logistics_carrier', 'logistics_tracking_no',
+    'pickup_time', 'depart_time', 'arrive_port_time', 'clearance_time',
+    'last_mile_pickup_time', 'delivery_time',
+    'is_customs_declared', 'customs_factory', 'is_inspected',
+    'last_mile_type', 'last_mile_channel',
+  ];
+
+  await db.transaction(async (trx) => {
+    for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
+      try {
+        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        if (!order) {
+          for (const row of groupRows) {
+            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
+          }
+          continue;
+        }
+
+        const firstRow = groupRows[0];
+        const orderUpdates: Record<string, any> = { update_time: new Date().toISOString() };
+
+        for (const field of LOGISTICS_FIELDS) {
+          if (firstRow[field] !== undefined && firstRow[field] !== null && firstRow[field] !== '') {
+            if (field === 'is_customs_declared' || field === 'is_inspected') {
+              orderUpdates[field] = BOOLEAN_MAP[String(firstRow[field])] ?? firstRow[field];
+            } else if (field.endsWith('_time')) {
+              const parsed = parseExcelDate(firstRow[field]);
+              if (parsed) orderUpdates[field] = parsed;
+            } else {
+              orderUpdates[field] = firstRow[field];
+            }
+          }
+        }
+
+        if (order.status === 'OUTBOUNDED' && orderUpdates.pickup_time) {
+          orderUpdates.status = 'IN_TRANSIT';
+        }
+        if (order.status === 'IN_TRANSIT' && orderUpdates.delivery_time) {
+          orderUpdates.status = 'RECEIVED';
+        }
+
+        await trx('transfer_orders').where({ id: order.id }).update(orderUpdates);
+
+        await trx('change_logs').insert({
+          record_type: 'transfer_order',
+          record_id: order.id,
+          transfer_no: order.transfer_no,
+          field_name: 'IMPORT_LOGISTICS',
+          old_value: '',
+          new_value: `${groupRows.length} rows`,
+          change_source: 'IMPORT',
+          operator,
+          reason: '物流信息导入',
+        });
+
+        updatedOrders++;
+      } catch (err: any) {
+        for (const row of groupRows) {
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 物流信息导入失败: ${err.message}` });
+        }
+      }
+    }
+  });
+
+  const allErrors = [...errors, ...orderErrors];
+  const successCount = validRows.length - orderErrors.length;
+
+  return {
+    total: parsedRows.length,
+    success: successCount,
+    failed: allErrors.length,
+    errors: allErrors,
+    createdOrders: 0,
+    updatedOrders,
+  };
+}
+
+export async function importLogisticsEvents(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
+  const { headers, rows } = parseExcel(buffer);
+  if (headers.length === 0 || rows.length === 0) {
+    return { total: 0, success: 0, failed: 0, errors: [{ row: 0, message: 'Excel文件为空或无有效数据' }], createdOrders: 0, updatedOrders: 0 };
+  }
+
+  const parsedRows = mapRowsWithColumnMap(headers, rows, LOGISTICS_EVENT_COLUMN_MAP);
+  const errors: RowError[] = [];
+  const validRows: ParsedRow[] = [];
+
+  for (const row of parsedRows) {
+    if (!row.inbound_order_no || !row.event_time || !row.event_type) {
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号/事件时间/事件类型' });
+    } else {
+      if (typeof row.event_type === 'string' && LOGISTICS_EVENT_TYPE_MAP[row.event_type]) {
+        row.event_type = LOGISTICS_EVENT_TYPE_MAP[row.event_type];
+      }
+      validRows.push(row);
+    }
+  }
+
+  const orderGroups: Record<string, ParsedRow[]> = {};
+  for (const row of validRows) {
+    const key = String(row.inbound_order_no);
+    if (!orderGroups[key]) orderGroups[key] = [];
+    orderGroups[key].push(row);
+  }
+
+  let updatedOrders = 0;
+  const orderErrors: RowError[] = [];
+
+  await db.transaction(async (trx) => {
+    for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
+      try {
+        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        if (!order) {
+          for (const row of groupRows) {
+            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
+          }
+          continue;
+        }
+
+        for (const row of groupRows) {
+          const eventTime = parseExcelDate(row.event_time) || new Date().toISOString();
+          await trx('tracking_events').insert({
+            transfer_no: order.transfer_no,
+            event_time: eventTime,
+            event_type: row.event_type,
+            event_desc: row.event_desc || null,
+            location: row.location || null,
+            operator,
+            create_time: new Date().toISOString(),
+          });
+        }
+
+        await trx('transfer_orders').where({ id: order.id }).update({
+          update_time: new Date().toISOString(),
+        });
+
+        await trx('change_logs').insert({
+          record_type: 'transfer_order',
+          record_id: order.id,
+          transfer_no: order.transfer_no,
+          field_name: 'IMPORT_LOGISTICS_EVENTS',
+          old_value: '',
+          new_value: `${groupRows.length} events`,
+          change_source: 'IMPORT',
+          operator,
+          reason: '物流事件导入',
+        });
+
+        updatedOrders++;
+      } catch (err: any) {
+        for (const row of groupRows) {
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 物流事件导入失败: ${err.message}` });
+        }
+      }
+    }
+  });
+
+  const allErrors = [...errors, ...orderErrors];
+  const successCount = validRows.length - orderErrors.length;
+
+  return {
+    total: parsedRows.length,
+    success: successCount,
+    failed: allErrors.length,
+    errors: allErrors,
+    createdOrders: 0,
+    updatedOrders,
+  };
+}
+
 export function generateTemplate(type: string): ArrayBuffer {
   const headersByType: Record<string, string[]> = {
     main: [
@@ -424,13 +949,18 @@ export function generateTemplate(type: string): ArrayBuffer {
       '尾程类型', '尾程渠道', '预估单价', '运费币种', '运费分摊方式', '备注',
     ],
     outbound: [
-      '第三方入库单号', '出库单号', '箱号', 'SKU编码', '出库数量',
+      '第三方入库单号', 'SKU编码', '实际出库数量', '出库时间', '出库单号',
     ],
     logistics: [
-      '第三方入库单号', '物流跟踪号', '物流商', '运输类型', '尾程类型', '尾程渠道',
+      '第三方入库单号', '物流商', '物流单号', '提货时间', '离港时间',
+      '到港时间', '清关时间', '尾程提取时间', '签收时间',
+      '是否报关', '报关工厂', '是否查验', '尾程类型', '尾程渠道',
     ],
     inbound: [
-      '第三方入库单号', '箱号', 'SKU编码', '收货数量', '上架数量',
+      '第三方入库单号', 'SKU编码', '实际入库数量', '入库时间',
+    ],
+    'logistics-events': [
+      '第三方入库单号', '事件时间', '事件类型', '事件描述', '位置',
     ],
   };
 
