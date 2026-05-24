@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Truck, AlertTriangle, DollarSign } from 'lucide-react';
-import { api } from '../api/client';
+import { api } from '../../api/client';
 import { TransportTypeLabel } from 'shared/constants';
 import type { TransportType } from 'shared/constants';
 
@@ -14,13 +14,18 @@ interface DashboardData {
   recentTrend: { date: string; count: number }[];
 }
 
+interface DashboardResponse {
+  success: boolean;
+  data: DashboardData;
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
 
   useEffect(() => {
-    api.get<{ success: boolean; data: DashboardData }>('/tracking/dashboard')
-      .then((res) => {
+    api.get<DashboardResponse>('/tracking/dashboard')
+      .then((res: DashboardResponse) => {
         if (res.success) {
           setDashboard(res.data);
         }
@@ -37,9 +42,6 @@ export default function DashboardPage() {
 
   const maxWarehouseCount = dashboard
     ? Math.max(...dashboard.warehouseDistribution.map((w) => w.count), 1)
-    : 1;
-  const maxTransportCount = dashboard
-    ? Math.max(...dashboard.transportDistribution.map((t) => t.count), 1)
     : 1;
   const maxTrendCount = dashboard
     ? Math.max(...dashboard.recentTrend.map((t) => t.count), 1)
