@@ -8,6 +8,9 @@ import users from './users.js';
 import imports from './imports.js';
 import orders from './orders.js';
 import tracking from './tracking.js';
+import sla from './sla.js';
+import discrepancies from './discrepancies.js';
+import freight from './freight.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const routes = new Hono();
@@ -22,6 +25,9 @@ routes.use('/users/*', authMiddleware);
 routes.use('/imports/*', authMiddleware);
 routes.use('/orders/*', authMiddleware);
 routes.use('/tracking/*', authMiddleware);
+routes.use('/sla-rules/*', authMiddleware);
+routes.use('/discrepancies/*', authMiddleware);
+routes.use('/freight-bills/*', authMiddleware);
 
 routes.route('/warehouses', warehouses);
 routes.route('/carriers', carriers);
@@ -30,5 +36,8 @@ routes.route('/users', users);
 routes.route('/imports', imports);
 routes.route('/orders', orders);
 routes.route('/tracking', tracking);
+routes.route('/sla-rules', sla);
+routes.route('/discrepancies', discrepancies);
+routes.route('/freight-bills', freight);
 
 export default routes;
