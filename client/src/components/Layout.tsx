@@ -25,16 +25,16 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { label: '数据看板', icon: LayoutDashboard, path: '/' },
-  { label: '调拨单列表', icon: FileText, path: '/orders', permission: 'transfer:view' },
-  { label: '在途追踪', icon: Truck, path: '/tracking', permission: 'tracking:view' },
-  { label: '导入管理', icon: Upload, path: '/imports', permission: 'import:manage' },
-  { label: '异常管理', icon: AlertTriangle, path: '/discrepancies', permission: 'discrepancy:view' },
-  { label: '运费管理', icon: DollarSign, path: '/freight', permission: 'freight:view' },
-  { label: '仓库管理', icon: Warehouse, path: '/warehouses', permission: 'warehouse:manage' },
-  { label: '物流商管理', icon: Ship, path: '/carriers', permission: 'carrier:manage' },
-  { label: 'SLA规则', icon: Clock, path: '/sla', permission: 'sla:manage' },
-  { label: '团队管理', icon: Users, path: '/teams', permission: 'team:manage' },
-  { label: '用户管理', icon: UserCog, path: '/users', permission: 'user:manage' },
+  { label: '调拨单列表', icon: FileText, path: '/orders', permission: 'order.view' },
+  { label: '在途追踪', icon: Truck, path: '/tracking', permission: 'tracking.view' },
+  { label: '导入管理', icon: Upload, path: '/imports', permission: 'import.execute' },
+  { label: '异常管理', icon: AlertTriangle, path: '/discrepancies', permission: 'discrepancy.view' },
+  { label: '运费管理', icon: DollarSign, path: '/freight', permission: 'freight.view' },
+  { label: '仓库管理', icon: Warehouse, path: '/warehouses', permission: 'settings.manage' },
+  { label: '物流商管理', icon: Ship, path: '/carriers', permission: 'settings.manage' },
+  { label: 'SLA规则', icon: Clock, path: '/sla', permission: 'settings.manage' },
+  { label: '团队管理', icon: Users, path: '/teams', permission: 'settings.manage' },
+  { label: '用户管理', icon: UserCog, path: '/users', permission: 'settings.manage' },
 ];
 
 const pageTitles: Record<string, string> = {
