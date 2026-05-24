@@ -1,0 +1,110 @@
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { zValidator } from '@hono/zod-validator';
+import { db } from '../db/index.js';
+
+const carriers = new Hono();
+
+const createCarrierSchema = z.object({
+  carrier_code: z.string().min(1),
+  carrier_name: z.string().min(1),
+  carrier_type: z.enum(['INTERNATIONAL_EXPRESS', 'INTERNATIONAL_SEA', 'INTERNATIONAL_AIR', 'RAIL', 'TRUCK']).optional(),
+  supported_transport_types: z.string().optional(),
+  supported_routes: z.string().optional(),
+  default_currency: z.string().optional(),
+  settlement_cycle: z.string().optional(),
+  contact_name: z.string().optional(),
+  contact_phone: z.string().optional(),
+  is_active: z.boolean().optional(),
+  remark: z.string().optional(),
+});
+
+const updateCarrierSchema = createCarrierSchema.partial();
+
+carriers.get('/', async (c) => {
+  const page = Number(c.req.query('page')) || 1;
+  const pageSize = Number(c.req.query('pageSize')) || 20;
+  const keyword = c.req.query('keyword') || '';
+  const carrierType = c.req.query('carrier_type');
+  const isActive = c.req.query('is_active');
+
+  let query = db('carriers');
+
+  if (keyword) {
+    query = query.where(function () {
+      this.where('carrier_code', 'like', `%${keyword}%`)
+        .orWhere('carrier_name', 'like', `%${keyword}%`);
+    });
+  }
+  if (carrierType) {
+    query = query.where('carrier_type', carrierType);
+  }
+  if (isActive !== undefined && isActive !== '') {
+    query = query.where('is_active', isActive === 'true' ? 1 : 0);
+  }
+
+  const totalResult = await query.clone().count('* as count').first();
+  const total = Number(totalResult?.count || 0);
+
+  const data = await query
+    .clone()
+    .offset((page - 1) * pageSize)
+    .limit(pageSize)
+    .orderBy('id', 'desc');
+
+  return c.json({
+    success: true,
+    data,
+    pagination: { total, page, pageSize },
+  });
+});
+
+carriers.get('/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const item = await db('carriers').where({ id }).first();
+  if (!item) {
+    return c.json({ success: false, error: 'Carrier not found' }, 404);
+  }
+  return c.json({ success: true, data: item });
+});
+
+carriers.post('/', zValidator('json', createCarrierSchema), async (c) => {
+  const body = c.req.valid('json');
+  const [inserted] = await db('carriers').insert(body).returning('*');
+  return c.json({ success: true, data: inserted }, 201);
+});
+
+carriers.put('/:id', zValidator('json', updateCarrierSchema), async (c) => {
+  const id = Number(c.req.param('id'));
+  const body = c.req.valid('json');
+
+  const existing = await db('carriers').where({ id }).first();
+  if (!existing) {
+    return c.json({ success: false, error: 'Carrier not found' }, 404);
+  }
+
+  await db('carriers').where({ id }).update({
+    ...body,
+    update_time: new Date().toISOString(),
+  });
+
+  const updated = await db('carriers').where({ id }).first();
+  return c.json({ success: true, data: updated });
+});
+
+carriers.delete('/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const existing = await db('carriers').where({ id }).first();
+  if (!existing) {
+    return c.json({ success: false, error: 'Carrier not found' }, 404);
+  }
+
+  await db('carriers').where({ id }).update({
+    is_active: false,
+    update_time: new Date().toISOString(),
+  });
+
+  return c.json({ success: true, data: { id } });
+});
+
+export default carriers;
