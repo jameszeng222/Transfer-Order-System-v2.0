@@ -17,6 +17,12 @@ query.post('/order', async (c) => {
     }
 
     const items = await db('transfer_order_items').where({ transfer_no: transferNo });
+    const itemsWithShortage = items.map((item: any) => ({
+      ...item,
+      shelf_shortage: (item.inbound_qty > 0 && item.shelf_qty < item.inbound_qty) 
+        ? item.inbound_qty - item.shelf_qty 
+        : 0,
+    }));
     const cartons = await db('transfer_cartons').where({ transfer_no: transferNo });
     const trackingEvents = await db('tracking_events').where({ transfer_no: transferNo }).orderBy('event_time', 'desc');
     const discrepancyRecords = await db('discrepancy_records').where({ transfer_no: transferNo });
@@ -48,7 +54,7 @@ query.post('/order', async (c) => {
       success: true,
       data: {
         ...order,
-        items,
+        items: itemsWithShortage,
         cartons: cartonsWithItems,
         tracking_events: trackingEvents,
         discrepancy_records: discrepancyRecords,

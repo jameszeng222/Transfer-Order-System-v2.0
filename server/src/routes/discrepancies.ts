@@ -5,11 +5,43 @@ import { db } from '../db/index.js';
 
 const discrepancies = new Hono();
 
+const createDiscrepancySchema = z.object({
+  transfer_no: z.string().min(1),
+  carton_no: z.string().optional(),
+  sku_code: z.string().min(1),
+  sku_name: z.string().optional(),
+  overseas_sku_code: z.string().optional(),
+  inbound_order_no: z.string().optional(),
+  discrepancy_category: z.enum(['QUANTITY_DIFF', 'QUALITY_ISSUE', 'LOGISTICS_ABNORMAL', 'SHELF_ABNORMAL']),
+  discrepancy_type: z.enum(['SHORT_SHIPMENT', 'OVER_SHIPMENT', 'WRONG_ITEM', 'DAMAGED', 'DETERIORATED', 'TIMEOUT_PORT', 'TIMEOUT_CUSTOMS', 'TIMEOUT_DELIVERY', 'LOST', 'PARTIAL_SHELF', 'NOT_SHELVED', 'WRONG_SHELF']),
+  discrepancy_qty: z.number().int().optional(),
+  source: z.enum(['MANUAL', 'SHELF_SHORTAGE']).default('MANUAL'),
+  resolution_remark: z.string().optional(),
+});
+
 const updateDiscrepancySchema = z.object({
   status: z.enum(['PENDING', 'PROCESSING', 'CLOSED']).optional(),
   handler: z.string().optional(),
   resolution: z.string().optional(),
   resolution_remark: z.string().optional(),
+});
+
+discrepancies.post('/', zValidator('json', createDiscrepancySchema), async (c) => {
+  const data = c.req.valid('json');
+  const user = c.get('user');
+
+  const order = await db('transfer_orders').where({ transfer_no: data.transfer_no }).first();
+  if (!order) {
+    return c.json({ success: false, error: '调拨单不存在' }, 404);
+  }
+
+  const [record] = await db('discrepancy_records').insert({
+    ...data,
+    status: 'PENDING',
+    handler: user?.username || 'system',
+  }).returning('*');
+
+  return c.json({ success: true, data: record }, 201);
 });
 
 discrepancies.get('/stats', async (c) => {
@@ -66,10 +98,27 @@ discrepancies.get('/', async (c) => {
   let query = db('discrepancy_records')
     .leftJoin('transfer_orders', 'discrepancy_records.transfer_no', 'transfer_orders.transfer_no')
     .select(
-      'discrepancy_records.*',
+      'discrepancy_records.id',
+      'discrepancy_records.transfer_no',
+      'discrepancy_records.carton_no',
+      'discrepancy_records.sku_code',
+      'discrepancy_records.sku_name',
+      'discrepancy_records.overseas_sku_code',
+      'discrepancy_records.inbound_order_no as discrepancy_inbound_order_no',
+      'discrepancy_records.discrepancy_category',
+      'discrepancy_records.discrepancy_type',
+      'discrepancy_records.discrepancy_qty',
+      'discrepancy_records.status',
+      'discrepancy_records.handler',
+      'discrepancy_records.resolution',
+      'discrepancy_records.resolution_remark',
+      'discrepancy_records.source',
+      'discrepancy_records.create_time',
+      'discrepancy_records.update_time',
+      'discrepancy_records.close_time',
       'transfer_orders.from_warehouse',
       'transfer_orders.to_warehouse',
-      'transfer_orders.inbound_order_no'
+      'transfer_orders.inbound_order_no as order_inbound_order_no'
     );
 
   if (status) {
@@ -136,10 +185,27 @@ discrepancies.get('/:id', async (c) => {
   const item = await db('discrepancy_records')
     .leftJoin('transfer_orders', 'discrepancy_records.transfer_no', 'transfer_orders.transfer_no')
     .select(
-      'discrepancy_records.*',
+      'discrepancy_records.id',
+      'discrepancy_records.transfer_no',
+      'discrepancy_records.carton_no',
+      'discrepancy_records.sku_code',
+      'discrepancy_records.sku_name',
+      'discrepancy_records.overseas_sku_code',
+      'discrepancy_records.inbound_order_no as discrepancy_inbound_order_no',
+      'discrepancy_records.discrepancy_category',
+      'discrepancy_records.discrepancy_type',
+      'discrepancy_records.discrepancy_qty',
+      'discrepancy_records.status',
+      'discrepancy_records.handler',
+      'discrepancy_records.resolution',
+      'discrepancy_records.resolution_remark',
+      'discrepancy_records.source',
+      'discrepancy_records.create_time',
+      'discrepancy_records.update_time',
+      'discrepancy_records.close_time',
       'transfer_orders.from_warehouse',
       'transfer_orders.to_warehouse',
-      'transfer_orders.inbound_order_no'
+      'transfer_orders.inbound_order_no as order_inbound_order_no'
     )
     .where('discrepancy_records.id', id)
     .first();
@@ -206,10 +272,27 @@ discrepancies.put('/:id', zValidator('json', updateDiscrepancySchema), async (c)
   const updated = await db('discrepancy_records')
     .leftJoin('transfer_orders', 'discrepancy_records.transfer_no', 'transfer_orders.transfer_no')
     .select(
-      'discrepancy_records.*',
+      'discrepancy_records.id',
+      'discrepancy_records.transfer_no',
+      'discrepancy_records.carton_no',
+      'discrepancy_records.sku_code',
+      'discrepancy_records.sku_name',
+      'discrepancy_records.overseas_sku_code',
+      'discrepancy_records.inbound_order_no as discrepancy_inbound_order_no',
+      'discrepancy_records.discrepancy_category',
+      'discrepancy_records.discrepancy_type',
+      'discrepancy_records.discrepancy_qty',
+      'discrepancy_records.status',
+      'discrepancy_records.handler',
+      'discrepancy_records.resolution',
+      'discrepancy_records.resolution_remark',
+      'discrepancy_records.source',
+      'discrepancy_records.create_time',
+      'discrepancy_records.update_time',
+      'discrepancy_records.close_time',
       'transfer_orders.from_warehouse',
       'transfer_orders.to_warehouse',
-      'transfer_orders.inbound_order_no'
+      'transfer_orders.inbound_order_no as order_inbound_order_no'
     )
     .where('discrepancy_records.id', id)
     .first();

@@ -341,31 +341,79 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
     update_time: now,
   };
 
-  if (newStatus === 'OUTBOUNDED') {
-    updates.pickup_time = now;
-  } else if (newStatus === 'RECEIVED') {
-    updates.delivery_time = now;
-  } else if (newStatus === 'SHELVED') {
-    updates.shelve_time = now;
-  }
+  if (newStatus === 'OUTBOUNDED' && !order.depart_time) updates.depart_time = now;
+  if (newStatus === 'IN_TRANSIT' && !order.pickup_time) updates.pickup_time = now;
+  if (newStatus === 'RECEIVED' && !order.delivery_time) updates.delivery_time = now;
+  if (newStatus === 'SHELVED' && !order.shelve_time) updates.shelve_time = now;
 
   await db('transfer_orders').where({ transfer_no: transferNo }).update(updates);
 
   await db('change_logs').insert({
-    record_type: 'transfer_order',
+    record_type: 'TRANSFER_ORDER',
     record_id: order.id,
     transfer_no: transferNo,
     field_name: 'status',
     old_value: order.status,
     new_value: newStatus,
     change_source: 'MANUAL',
-    operator: user?.username || 'unknown',
+    operator: user?.username || 'system',
     change_time: now,
     reason: remark || null,
   });
 
   const updated = await db('transfer_orders').where({ transfer_no: transferNo }).first();
   return c.json({ success: true, data: updated });
+});
+
+orders.put('/batch-status', zValidator('json', z.object({
+  transferNos: z.array(z.string().min(1)).min(1),
+  status: z.enum(['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED', 'COMPLETED', 'CANCELLED']),
+  remark: z.string().optional(),
+})), async (c) => {
+  const { transferNos, status: newStatus, remark } = c.req.valid('json');
+  const user = c.get('user');
+  const results: { transferNo: string; success: boolean; error?: string }[] = [];
+
+  for (const transferNo of transferNos) {
+    const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
+    if (!order) {
+      results.push({ transferNo, success: false, error: '不存在' });
+      continue;
+    }
+    const allowedNext = STATUS_FLOW[order.status] || [];
+    if (!allowedNext.includes(newStatus)) {
+      results.push({ transferNo, success: false, error: `不允许从 ${order.status} 变更为 ${newStatus}` });
+      continue;
+    }
+    if (newStatus === 'COMPLETED' && !order.is_reconciled) {
+      results.push({ transferNo, success: false, error: '未完成对账' });
+      continue;
+    }
+
+    const now = new Date().toISOString();
+    const updates: Record<string, any> = { status: newStatus, update_time: now };
+    if (newStatus === 'OUTBOUNDED' && !order.depart_time) updates.depart_time = now;
+    if (newStatus === 'IN_TRANSIT' && !order.pickup_time) updates.pickup_time = now;
+    if (newStatus === 'RECEIVED' && !order.delivery_time) updates.delivery_time = now;
+    if (newStatus === 'SHELVED' && !order.shelve_time) updates.shelve_time = now;
+
+    await db('transfer_orders').where({ transfer_no: transferNo }).update(updates);
+    await db('change_logs').insert({
+      record_type: 'TRANSFER_ORDER',
+      record_id: order.id,
+      transfer_no: transferNo,
+      field_name: 'status',
+      old_value: order.status,
+      new_value: newStatus,
+      change_source: 'MANUAL',
+      operator: user?.username || 'system',
+      change_time: now,
+      reason: remark || `批量状态变更: ${order.status} → ${newStatus}`,
+    });
+    results.push({ transferNo, success: true });
+  }
+
+  return c.json({ success: true, data: results });
 });
 
 const editOrderWithTransferSchema = editOrderSchema.extend({ transferNo: z.string().min(1) });

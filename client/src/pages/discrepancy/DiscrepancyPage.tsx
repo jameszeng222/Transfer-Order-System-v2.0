@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, Clock, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Clock, CheckCircle2, Plus } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../../components/ui/Button';
@@ -11,7 +11,7 @@ import { FormField } from '../../components/ui/FormField';
 import { Pagination } from '../../components/ui/Pagination';
 import { StatCard } from '../../components/ui/StatCard';
 import { EmptyState } from '../../components/ui/EmptyState';
-import DateRangeFilter from '../../components/ui/DateRangeFilter';
+import TimeFilterPanel from '../../components/ui/TimeFilterPanel';
 
 interface Stats {
   pending: number;
@@ -45,6 +45,35 @@ const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
   CATEGORY_OPTIONS.map((o) => [o.value, o.label])
 );
 
+const NEW_DISCREPANCY_CATEGORY_OPTIONS = [
+  { label: '数量差异', value: 'QUANTITY_DIFF' },
+  { label: '质量问题', value: 'QUALITY_ISSUE' },
+  { label: '物流异常', value: 'LOGISTICS_ABNORMAL' },
+  { label: '上架异常', value: 'SHELF_ABNORMAL' },
+];
+
+const DISCREPANCY_TYPE_MAP: Record<string, { label: string; value: string }[]> = {
+  QUANTITY_DIFF: [
+    { label: '少件', value: 'SHORTAGE' },
+    { label: '多件', value: 'EXCESS' },
+    { label: '错件', value: 'WRONG_ITEM' },
+  ],
+  QUALITY_ISSUE: [
+    { label: '破损', value: 'DAMAGED' },
+    { label: '变质', value: 'DETERIORATED' },
+    { label: '包装损坏', value: 'PACKAGING_DAMAGED' },
+  ],
+  LOGISTICS_ABNORMAL: [
+    { label: '丢失', value: 'LOST' },
+    { label: '延迟', value: 'DELAYED' },
+    { label: '错发', value: 'MIS_SHIPPED' },
+  ],
+  SHELF_ABNORMAL: [
+    { label: '上架短缺', value: 'SHELF_SHORTAGE' },
+    { label: '上架错位', value: 'SHELF_MISPLACED' },
+  ],
+};
+
 const RESOLUTION_OPTIONS = [
   { label: '补发', value: 'RESHIP' },
   { label: '退款', value: 'REFUND' },
@@ -52,6 +81,14 @@ const RESOLUTION_OPTIONS = [
   { label: '忽略', value: 'IGNORE' },
   { label: '其他', value: 'OTHER' },
 ];
+
+const DEFAULT_TIME_FILTERS = {
+  createTimeRange: { start: '', end: '' },
+  departTimeRange: { start: '', end: '' },
+  pickupTimeRange: { start: '', end: '' },
+  deliveryTimeRange: { start: '', end: '' },
+  shelveTimeRange: { start: '', end: '' },
+};
 
 function formatDateTime(val: string | null | undefined): string {
   if (!val) return '--';
@@ -65,6 +102,26 @@ function formatDateTime(val: string | null | undefined): string {
   return `${y}-${m}-${day} ${h}:${min}`;
 }
 
+interface NewDiscrepancyForm {
+  transfer_no: string;
+  sku_code: string;
+  sku_name: string;
+  discrepancy_category: string;
+  discrepancy_type: string;
+  discrepancy_qty: number | string;
+  remark: string;
+}
+
+const DEFAULT_NEW_FORM: NewDiscrepancyForm = {
+  transfer_no: '',
+  sku_code: '',
+  sku_name: '',
+  discrepancy_category: '',
+  discrepancy_type: '',
+  discrepancy_qty: '',
+  remark: '',
+};
+
 export default function DiscrepancyPage() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canView = hasPermission('discrepancy.view');
@@ -77,11 +134,7 @@ export default function DiscrepancyPage() {
   const [stats, setStats] = useState<Stats>({ pending: 0, processing: 0, closed: 0 });
 
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [createTimeRange, setCreateTimeRange] = useState({ start: '', end: '' });
-  const [departTimeRange, setDepartTimeRange] = useState({ start: '', end: '' });
-  const [pickupTimeRange, setPickupTimeRange] = useState({ start: '', end: '' });
-  const [deliveryTimeRange, setDeliveryTimeRange] = useState({ start: '', end: '' });
-  const [shelveTimeRange, setShelveTimeRange] = useState({ start: '', end: '' });
+  const [timeFilters, setTimeFilters] = useState({ ...DEFAULT_TIME_FILTERS });
 
   const [resolveOpen, setResolveOpen] = useState(false);
   const [resolveRow, setResolveRow] = useState<Record<string, unknown> | null>(null);
@@ -89,6 +142,11 @@ export default function DiscrepancyPage() {
   const [resolutionRemark, setResolutionRemark] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+
+  const [newOpen, setNewOpen] = useState(false);
+  const [newForm, setNewForm] = useState<NewDiscrepancyForm>({ ...DEFAULT_NEW_FORM });
+  const [newSubmitting, setNewSubmitting] = useState(false);
+  const [newError, setNewError] = useState('');
 
   const fetchStats = useCallback(async () => {
     try {
@@ -104,16 +162,16 @@ export default function DiscrepancyPage() {
       for (const [k, v] of Object.entries(filters)) {
         if (v) params.set(k, v);
       }
-      if (createTimeRange.start) params.set('create_time_start', createTimeRange.start);
-      if (createTimeRange.end) params.set('create_time_end', createTimeRange.end);
-      if (departTimeRange.start) params.set('depart_time_start', departTimeRange.start);
-      if (departTimeRange.end) params.set('depart_time_end', departTimeRange.end);
-      if (pickupTimeRange.start) params.set('pickup_time_start', pickupTimeRange.start);
-      if (pickupTimeRange.end) params.set('pickup_time_end', pickupTimeRange.end);
-      if (deliveryTimeRange.start) params.set('delivery_time_start', deliveryTimeRange.start);
-      if (deliveryTimeRange.end) params.set('delivery_time_end', deliveryTimeRange.end);
-      if (shelveTimeRange.start) params.set('shelve_time_start', shelveTimeRange.start);
-      if (shelveTimeRange.end) params.set('shelve_time_end', shelveTimeRange.end);
+      if (timeFilters.createTimeRange.start) params.set('create_time_start', timeFilters.createTimeRange.start);
+      if (timeFilters.createTimeRange.end) params.set('create_time_end', timeFilters.createTimeRange.end);
+      if (timeFilters.departTimeRange.start) params.set('depart_time_start', timeFilters.departTimeRange.start);
+      if (timeFilters.departTimeRange.end) params.set('depart_time_end', timeFilters.departTimeRange.end);
+      if (timeFilters.pickupTimeRange.start) params.set('pickup_time_start', timeFilters.pickupTimeRange.start);
+      if (timeFilters.pickupTimeRange.end) params.set('pickup_time_end', timeFilters.pickupTimeRange.end);
+      if (timeFilters.deliveryTimeRange.start) params.set('delivery_time_start', timeFilters.deliveryTimeRange.start);
+      if (timeFilters.deliveryTimeRange.end) params.set('delivery_time_end', timeFilters.deliveryTimeRange.end);
+      if (timeFilters.shelveTimeRange.start) params.set('shelve_time_start', timeFilters.shelveTimeRange.start);
+      if (timeFilters.shelveTimeRange.end) params.set('shelve_time_end', timeFilters.shelveTimeRange.end);
       const res = await api.get<{
         success: boolean;
         data: Record<string, unknown>[];
@@ -129,7 +187,7 @@ export default function DiscrepancyPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, filters, createTimeRange, departTimeRange, pickupTimeRange, deliveryTimeRange, shelveTimeRange]);
+  }, [page, filters, timeFilters]);
 
   useEffect(() => {
     if (canView) { fetchData(); fetchStats(); }
@@ -171,18 +229,65 @@ export default function DiscrepancyPage() {
     }
   };
 
+  const handleNewFormChange = (name: string, value: unknown) => {
+    setNewForm(prev => {
+      const updated = { ...prev, [name]: value };
+      if (name === 'discrepancy_category') {
+        updated.discrepancy_type = '';
+      }
+      return updated;
+    });
+    setNewError('');
+  };
+
+  const handleNewSubmit = async () => {
+    if (!newForm.transfer_no) { setNewError('请输入调拨单号'); return; }
+    if (!newForm.sku_code) { setNewError('请输入SKU编码'); return; }
+    if (!newForm.discrepancy_category) { setNewError('请选择异常分类'); return; }
+    if (!newForm.discrepancy_type) { setNewError('请选择异常类型'); return; }
+    setNewSubmitting(true);
+    try {
+      const res = await api.post<{ success: boolean; error?: string }>('/discrepancies', {
+        ...newForm,
+        source: 'MANUAL',
+      });
+      if (res.success) {
+        setNewOpen(false);
+        setNewForm({ ...DEFAULT_NEW_FORM });
+        fetchData();
+        fetchStats();
+      } else {
+        setNewError(res.error || '创建失败');
+      }
+    } catch (err) {
+      setNewError(err instanceof Error ? err.message : '创建失败');
+    } finally {
+      setNewSubmitting(false);
+    }
+  };
+
   if (!canView) {
     return <EmptyState title="无权限" description="您没有查看此页面的权限" />;
   }
 
   const tableColumns = [
     { key: 'transfer_no', title: '调拨单号' },
+    { key: 'sku_code', title: '系统SKU' },
+    { key: 'sku_name', title: '品名', render: (_value: unknown, row: Record<string, unknown>) => (row.sku_name as string) || '--' },
     { key: 'inbound_order_no', title: '入库单号' },
     {
       key: 'from_warehouse', title: '来源仓 → 目的仓',
       render: (_value: unknown, row: Record<string, unknown>) => (
         <span className="text-gray-700">{String(row.from_warehouse)} → {String(row.to_warehouse)}</span>
       ),
+    },
+    {
+      key: 'source', title: '来源',
+      render: (_value: unknown, row: Record<string, unknown>) => {
+        const source = row.source as string;
+        if (source === 'SHELF_SHORTAGE') return <Badge variant="abnormal">上架短缺</Badge>;
+        return <Badge variant="pending">手动创建</Badge>;
+      },
     },
     {
       key: 'discrepancy_category', title: '异常分类',
@@ -223,7 +328,12 @@ export default function DiscrepancyPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-gray-900">异常管理</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-gray-900">异常管理</h1>
+        {canManage && (
+          <Button icon={Plus} onClick={() => { setNewForm({ ...DEFAULT_NEW_FORM }); setNewError(''); setNewOpen(true); }}>新建异常</Button>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard label="待确认" value={stats.pending} icon={AlertTriangle} color="orange" />
@@ -258,43 +368,7 @@ export default function DiscrepancyPage() {
             </select>
           </div>
           <Button variant="secondary" onClick={handleSearch}>搜索</Button>
-        </div>
-        <div className="flex flex-wrap items-end gap-3 mt-3">
-          <DateRangeFilter
-            label="创建时间"
-            startValue={createTimeRange.start}
-            endValue={createTimeRange.end}
-            onStartChange={(v) => setCreateTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setCreateTimeRange((r) => ({ ...r, end: v }))}
-          />
-          <DateRangeFilter
-            label="出库时间"
-            startValue={departTimeRange.start}
-            endValue={departTimeRange.end}
-            onStartChange={(v) => setDepartTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setDepartTimeRange((r) => ({ ...r, end: v }))}
-          />
-          <DateRangeFilter
-            label="收件时间"
-            startValue={pickupTimeRange.start}
-            endValue={pickupTimeRange.end}
-            onStartChange={(v) => setPickupTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setPickupTimeRange((r) => ({ ...r, end: v }))}
-          />
-          <DateRangeFilter
-            label="签收时间"
-            startValue={deliveryTimeRange.start}
-            endValue={deliveryTimeRange.end}
-            onStartChange={(v) => setDeliveryTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setDeliveryTimeRange((r) => ({ ...r, end: v }))}
-          />
-          <DateRangeFilter
-            label="上架时间"
-            startValue={shelveTimeRange.start}
-            endValue={shelveTimeRange.end}
-            onStartChange={(v) => setShelveTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setShelveTimeRange((r) => ({ ...r, end: v }))}
-          />
+          <TimeFilterPanel filters={timeFilters} onChange={setTimeFilters} />
         </div>
       </Card>
 
@@ -315,6 +389,25 @@ export default function DiscrepancyPage() {
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
             <Button variant="secondary" onClick={() => setResolveOpen(false)}>取消</Button>
             <Button loading={submitting} onClick={handleResolve}>提交</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={newOpen} title="新建异常" onClose={() => setNewOpen(false)} width="md">
+        <div className="space-y-4">
+          <FormField label="调拨单号" name="transfer_no" type="text" value={newForm.transfer_no} onChange={handleNewFormChange} required placeholder="请输入调拨单号" />
+          <FormField label="SKU编码" name="sku_code" type="text" value={newForm.sku_code} onChange={handleNewFormChange} required placeholder="请输入SKU编码" />
+          <FormField label="品名" name="sku_name" type="text" value={newForm.sku_name} onChange={handleNewFormChange} placeholder="请输入品名" />
+          <FormField label="异常分类" name="discrepancy_category" type="select" value={newForm.discrepancy_category} onChange={handleNewFormChange} required placeholder="请选择异常分类" options={NEW_DISCREPANCY_CATEGORY_OPTIONS} />
+          {newForm.discrepancy_category && DISCREPANCY_TYPE_MAP[newForm.discrepancy_category] && (
+            <FormField label="异常类型" name="discrepancy_type" type="select" value={newForm.discrepancy_type} onChange={handleNewFormChange} required placeholder="请选择异常类型" options={DISCREPANCY_TYPE_MAP[newForm.discrepancy_category]} />
+          )}
+          <FormField label="异常数量" name="discrepancy_qty" type="number" value={newForm.discrepancy_qty} onChange={handleNewFormChange} placeholder="请输入异常数量" />
+          <FormField label="备注" name="remark" type="textarea" value={newForm.remark} onChange={handleNewFormChange} placeholder="请输入备注" />
+          {newError && <p className="text-sm text-red-500">{newError}</p>}
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+            <Button variant="secondary" onClick={() => setNewOpen(false)}>取消</Button>
+            <Button loading={newSubmitting} onClick={handleNewSubmit}>提交</Button>
           </div>
         </div>
       </Modal>

@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { api } from '../../api/client';
 import { TransferStatusLabel, TransportTypeLabel } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
-import { Button, Card, Badge, Table, EmptyState } from '../../components/ui';
+import { Button, Card, Badge, Table, EmptyState, Modal, FormField } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
 
 interface CartonItem { id: number; carton_no: string; sku_code: string; sku_name: string; overseas_sku_code: string; product_name: string; qty: number; shelf_qty: number; }
 interface Carton { id: number; carton_no: string; logistics_tracking_no: string; logistics_carrier_order_no: string; carton_length: number; carton_width: number; carton_height: number; carton_weight: number; declared_value: number; departure_time: string; arrival_port_time: string; customs_clearance_time: string; last_mile_pickup_time: string; logistics_sign_time: string; unload_time: string; shelf_time: string; is_shelf_abnormal: number; shelf_abnormal_type: string; shelf_abnormal_remark: string; carton_items: CartonItem[]; }
-interface OrderItem { id: number; sku_code: string; sku_name: string; overseas_sku_code: string; expected_qty: number; outbound_qty: number; inbound_qty: number; shelf_qty: number; outbound_diff: number; inbound_diff: number; total_diff: number; diff_reason: string; unit_weight: number; unit_volume: number; freight_cost_total: number; freight_cost_per_unit: number; }
+interface OrderItem { id: number; sku_code: string; sku_name: string; overseas_sku_code: string; expected_qty: number; outbound_qty: number; inbound_qty: number; shelf_qty: number; shelf_shortage: number; outbound_diff: number; inbound_diff: number; total_diff: number; diff_reason: string; unit_weight: number; unit_volume: number; freight_cost_total: number; freight_cost_per_unit: number; }
 interface TrackingEvent { id: number; event_time: string; event_type: string; event_desc: string; location: string; operator: string; }
 interface ChangeLog { id: number; record_type: string; record_id: number; field_name: string; old_value: string; new_value: string; change_source: string; operator: string; change_time: string; reason: string; }
 
@@ -62,6 +62,55 @@ const SLA_ITEMS = [
   { label: '4天内完成', value: '不适用', status: 'na' as const },
 ];
 
+const DISCREPANCY_CATEGORY_OPTIONS = [
+  { label: '数量差异', value: 'QUANTITY_DIFF' },
+  { label: '质量问题', value: 'QUALITY_ISSUE' },
+  { label: '物流异常', value: 'LOGISTICS_ABNORMAL' },
+  { label: '上架异常', value: 'SHELF_ABNORMAL' },
+];
+
+const DISCREPANCY_TYPE_MAP: Record<string, { label: string; value: string }[]> = {
+  QUANTITY_DIFF: [
+    { label: '少件', value: 'SHORTAGE' },
+    { label: '多件', value: 'EXCESS' },
+    { label: '错件', value: 'WRONG_ITEM' },
+  ],
+  QUALITY_ISSUE: [
+    { label: '破损', value: 'DAMAGED' },
+    { label: '变质', value: 'DETERIORATED' },
+    { label: '包装损坏', value: 'PACKAGING_DAMAGED' },
+  ],
+  LOGISTICS_ABNORMAL: [
+    { label: '丢失', value: 'LOST' },
+    { label: '延迟', value: 'DELAYED' },
+    { label: '错发', value: 'MIS_SHIPPED' },
+  ],
+  SHELF_ABNORMAL: [
+    { label: '上架短缺', value: 'SHELF_SHORTAGE' },
+    { label: '上架错位', value: 'SHELF_MISPLACED' },
+  ],
+};
+
+interface DiscrepancyForm {
+  transfer_no: string;
+  sku_code: string;
+  sku_name: string;
+  discrepancy_category: string;
+  discrepancy_type: string;
+  discrepancy_qty: number | string;
+  remark: string;
+}
+
+const DEFAULT_FORM: DiscrepancyForm = {
+  transfer_no: '',
+  sku_code: '',
+  sku_name: '',
+  discrepancy_category: '',
+  discrepancy_type: '',
+  discrepancy_qty: '',
+  remark: '',
+};
+
 function formatShortDate(val: string | null | undefined): string {
   if (!val) return '—';
   const d = new Date(val);
@@ -78,6 +127,15 @@ export default function OrderDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const [discrepancyOpen, setDiscrepancyOpen] = useState(false);
+  const [discrepancyForm, setDiscrepancyForm] = useState<DiscrepancyForm>({ ...DEFAULT_FORM });
+  const [discrepancySubmitting, setDiscrepancySubmitting] = useState(false);
+  const [discrepancyError, setDiscrepancyError] = useState('');
+
+  const [confirmShortageOpen, setConfirmShortageOpen] = useState(false);
+  const [confirmShortageItem, setConfirmShortageItem] = useState<OrderItem | null>(null);
+  const [confirmShortageSubmitting, setConfirmShortageSubmitting] = useState(false);
+
   const fetchOrder = useCallback((tn: string) => {
     if (!tn) { setLoading(false); return; }
     setLoading(true);
@@ -89,7 +147,6 @@ export default function OrderDetailPage() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (transferNo) fetchOrder(transferNo);
   }, [transferNo, fetchOrder]);
 
@@ -106,6 +163,78 @@ export default function OrderDetailPage() {
       const msg = err instanceof Error ? err.message : '操作失败';
       alert(msg);
     } finally { setActionLoading(false); }
+  };
+
+  const openDiscrepancyModal = (item?: OrderItem) => {
+    setDiscrepancyForm({
+      ...DEFAULT_FORM,
+      transfer_no: order?.transfer_no || '',
+      sku_code: item?.sku_code || '',
+      sku_name: item?.sku_name || '',
+    });
+    setDiscrepancyError('');
+    setDiscrepancyOpen(true);
+  };
+
+  const handleDiscrepancyFormChange = (name: string, value: unknown) => {
+    setDiscrepancyForm(prev => {
+      const updated = { ...prev, [name]: value };
+      if (name === 'discrepancy_category') {
+        updated.discrepancy_type = '';
+      }
+      return updated;
+    });
+    setDiscrepancyError('');
+  };
+
+  const handleDiscrepancySubmit = async () => {
+    if (!discrepancyForm.transfer_no) { setDiscrepancyError('调拨单号不能为空'); return; }
+    if (!discrepancyForm.sku_code) { setDiscrepancyError('SKU编码不能为空'); return; }
+    if (!discrepancyForm.discrepancy_category) { setDiscrepancyError('请选择异常分类'); return; }
+    if (!discrepancyForm.discrepancy_type) { setDiscrepancyError('请选择异常类型'); return; }
+    setDiscrepancySubmitting(true);
+    try {
+      const res = await api.post<{ success: boolean; error?: string }>('/discrepancies', {
+        ...discrepancyForm,
+        source: 'MANUAL',
+      });
+      if (res.success) {
+        setDiscrepancyOpen(false);
+      } else {
+        setDiscrepancyError(res.error || '创建失败');
+      }
+    } catch (err) {
+      setDiscrepancyError(err instanceof Error ? err.message : '创建失败');
+    } finally {
+      setDiscrepancySubmitting(false);
+    }
+  };
+
+  const handleConfirmShortage = async (item: OrderItem) => {
+    if (!order) return;
+    setConfirmShortageSubmitting(true);
+    try {
+      const res = await api.post<{ success: boolean; error?: string }>('/discrepancies', {
+        transfer_no: order.transfer_no,
+        sku_code: item.sku_code,
+        sku_name: item.sku_name,
+        discrepancy_category: 'SHELF_ABNORMAL',
+        discrepancy_type: 'SHELF_SHORTAGE',
+        discrepancy_qty: item.shelf_shortage,
+        source: 'SHELF_SHORTAGE',
+        remark: `上架短缺：计划${item.expected_qty}，上架${item.shelf_qty}`,
+      });
+      if (res.success) {
+        setConfirmShortageOpen(false);
+        setConfirmShortageItem(null);
+      } else {
+        alert(res.error || '创建失败');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '创建失败');
+    } finally {
+      setConfirmShortageSubmitting(false);
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center py-24"><span className="text-sm text-text-tertiary">加载中...</span></div>;
@@ -177,12 +306,51 @@ export default function OrderDetailPage() {
     { key: 'sku_name', title: '品名', render: (_, row) => (row.sku_name as string) || '--' },
     { key: 'expected_qty', title: '计划数量' },
     { key: 'outbound_qty', title: '实际发货' },
-    { key: 'shelf_qty', title: '上架数量', render: (_, row) => (row.shelf_qty as number) ?? '—' },
+    {
+      key: 'shelf_qty',
+      title: '上架数量',
+      render: (_, row) => {
+        const shelfQty = row.shelf_qty as number;
+        const shelfShortage = (row as unknown as OrderItem).shelf_shortage;
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <span>{shelfQty ?? '—'}</span>
+            {shelfShortage > 0 && <Badge variant="abnormal">上架短缺</Badge>}
+          </span>
+        );
+      },
+    },
     { key: 'total_diff', title: '上架差异', render: (_, row) => (row.total_diff as number) ?? '—' },
     { key: 'freight_cost_per_unit', title: '运费成本/件', render: (_, row) => {
       const val = row.freight_cost_per_unit as number;
       return val != null ? <span className="text-text-tertiary">¥{val.toFixed(2)}</span> : <span className="text-text-tertiary">待分摊</span>;
     }},
+    {
+      key: '_actions',
+      title: '操作',
+      width: '120px',
+      render: (_, row) => {
+        const item = row as unknown as OrderItem;
+        return (
+          <div className="flex items-center gap-2">
+            <button
+              className="text-xs text-accent hover:text-accent-hover"
+              onClick={() => openDiscrepancyModal(item)}
+            >
+              报异常
+            </button>
+            {(item.shelf_shortage > 0) && (
+              <button
+                className="text-xs text-red hover:text-red-600"
+                onClick={() => { setConfirmShortageItem(item); setConfirmShortageOpen(true); }}
+              >
+                确认生成异常单
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
   ];
 
   const freightSkuColumns: ColumnDef[] = [
@@ -282,7 +450,12 @@ export default function OrderDetailPage() {
           </div>
         </Card>
 
-        <Card title="SKU明细" actions={<Button variant="secondary" size="sm">编辑</Button>}>
+        <Card title="SKU明细" actions={
+          <div className="flex gap-1.5">
+            <Button variant="secondary" size="sm">编辑</Button>
+            <Button variant="secondary" size="sm" icon={AlertTriangle} onClick={() => openDiscrepancyModal()}>报异常</Button>
+          </div>
+        }>
           <Table columns={skuColumns} data={order.items as unknown as Record<string, unknown>[]} />
         </Card>
 
@@ -379,6 +552,40 @@ export default function OrderDetailPage() {
           </div>
         </Card>
       </div>
+
+      <Modal open={discrepancyOpen} title="报异常" onClose={() => setDiscrepancyOpen(false)} width="md">
+        <div className="space-y-4">
+          <FormField label="调拨单号" name="transfer_no" type="text" value={discrepancyForm.transfer_no} onChange={handleDiscrepancyFormChange} required placeholder="请输入调拨单号" />
+          <FormField label="SKU编码" name="sku_code" type="text" value={discrepancyForm.sku_code} onChange={handleDiscrepancyFormChange} required placeholder="请输入SKU编码" />
+          <FormField label="品名" name="sku_name" type="text" value={discrepancyForm.sku_name} onChange={handleDiscrepancyFormChange} placeholder="请输入品名" />
+          <FormField label="异常分类" name="discrepancy_category" type="select" value={discrepancyForm.discrepancy_category} onChange={handleDiscrepancyFormChange} required placeholder="请选择异常分类" options={DISCREPANCY_CATEGORY_OPTIONS} />
+          {discrepancyForm.discrepancy_category && DISCREPANCY_TYPE_MAP[discrepancyForm.discrepancy_category] && (
+            <FormField label="异常类型" name="discrepancy_type" type="select" value={discrepancyForm.discrepancy_type} onChange={handleDiscrepancyFormChange} required placeholder="请选择异常类型" options={DISCREPANCY_TYPE_MAP[discrepancyForm.discrepancy_category]} />
+          )}
+          <FormField label="异常数量" name="discrepancy_qty" type="number" value={discrepancyForm.discrepancy_qty} onChange={handleDiscrepancyFormChange} placeholder="请输入异常数量" />
+          <FormField label="备注" name="remark" type="textarea" value={discrepancyForm.remark} onChange={handleDiscrepancyFormChange} placeholder="请输入备注" />
+          {discrepancyError && <p className="text-sm text-red-500">{discrepancyError}</p>}
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+            <Button variant="secondary" onClick={() => setDiscrepancyOpen(false)}>取消</Button>
+            <Button loading={discrepancySubmitting} onClick={handleDiscrepancySubmit}>提交</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={confirmShortageOpen} title="确认生成异常单" onClose={() => { setConfirmShortageOpen(false); setConfirmShortageItem(null); }} width="sm">
+        <div className="space-y-4">
+          <div className="text-sm text-gray-600">
+            <p>SKU：<span className="font-medium text-gray-900">{confirmShortageItem?.sku_code}</span></p>
+            <p>品名：<span className="font-medium text-gray-900">{confirmShortageItem?.sku_name || '--'}</span></p>
+            <p>上架短缺数量：<span className="font-medium text-red">{confirmShortageItem?.shelf_shortage}</span></p>
+          </div>
+          <p className="text-sm text-gray-500">确认将为该SKU生成上架短缺异常单？</p>
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+            <Button variant="secondary" onClick={() => { setConfirmShortageOpen(false); setConfirmShortageItem(null); }}>取消</Button>
+            <Button loading={confirmShortageSubmitting} onClick={() => confirmShortageItem && handleConfirmShortage(confirmShortageItem)}>确认生成</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

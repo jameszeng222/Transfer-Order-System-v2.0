@@ -5,7 +5,7 @@ import { api } from '../../api/client';
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 import { TransportTypeLabel } from 'shared/constants';
 import type { TransportType } from 'shared/constants';
-import { StatCard, Card, FormField, Table, Pagination, Button, Badge, DateRangeFilter } from '../../components/ui';
+import { StatCard, Card, FormField, Table, Pagination, Button, Badge, TimeFilterPanel } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
 
 interface DashboardData {
@@ -63,6 +63,14 @@ const DEFAULT_FILTERS = {
   abnormal: '',
 };
 
+const DEFAULT_TIME_FILTERS = {
+  createTimeRange: { start: '', end: '' },
+  departTimeRange: { start: '', end: '' },
+  pickupTimeRange: { start: '', end: '' },
+  deliveryTimeRange: { start: '', end: '' },
+  shelveTimeRange: { start: '', end: '' },
+};
+
 function formatDate(val: string | null | undefined): string {
   if (!val) return '--';
   const d = new Date(val);
@@ -82,11 +90,7 @@ export default function TrackingPage() {
   const [slaCheckResult, setSlaCheckResult] = useState<{ checkedCount: number; newTimeoutCount: number } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
-  const [createTimeRange, setCreateTimeRange] = useState({ start: '', end: '' });
-  const [departTimeRange, setDepartTimeRange] = useState({ start: '', end: '' });
-  const [pickupTimeRange, setPickupTimeRange] = useState({ start: '', end: '' });
-  const [deliveryTimeRange, setDeliveryTimeRange] = useState({ start: '', end: '' });
-  const [shelveTimeRange, setShelveTimeRange] = useState({ start: '', end: '' });
+  const [timeFilters, setTimeFilters] = useState({ ...DEFAULT_TIME_FILTERS });
 
   useEffect(() => {
     api.get<{ success: boolean; data: Warehouse[] }>('/warehouses?pageSize=100')
@@ -110,16 +114,16 @@ export default function TrackingPage() {
     if (filters.to_warehouse) params.set('to_warehouse', filters.to_warehouse);
     if (filters.transport_type) params.set('transport_type', filters.transport_type);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
-    if (createTimeRange.start) params.set('create_time_start', createTimeRange.start);
-    if (createTimeRange.end) params.set('create_time_end', createTimeRange.end);
-    if (departTimeRange.start) params.set('depart_time_start', departTimeRange.start);
-    if (departTimeRange.end) params.set('depart_time_end', departTimeRange.end);
-    if (pickupTimeRange.start) params.set('pickup_time_start', pickupTimeRange.start);
-    if (pickupTimeRange.end) params.set('pickup_time_end', pickupTimeRange.end);
-    if (deliveryTimeRange.start) params.set('delivery_time_start', deliveryTimeRange.start);
-    if (deliveryTimeRange.end) params.set('delivery_time_end', deliveryTimeRange.end);
-    if (shelveTimeRange.start) params.set('shelve_time_start', shelveTimeRange.start);
-    if (shelveTimeRange.end) params.set('shelve_time_end', shelveTimeRange.end);
+    if (timeFilters.createTimeRange.start) params.set('create_time_start', timeFilters.createTimeRange.start);
+    if (timeFilters.createTimeRange.end) params.set('create_time_end', timeFilters.createTimeRange.end);
+    if (timeFilters.departTimeRange.start) params.set('depart_time_start', timeFilters.departTimeRange.start);
+    if (timeFilters.departTimeRange.end) params.set('depart_time_end', timeFilters.departTimeRange.end);
+    if (timeFilters.pickupTimeRange.start) params.set('pickup_time_start', timeFilters.pickupTimeRange.start);
+    if (timeFilters.pickupTimeRange.end) params.set('pickup_time_end', timeFilters.pickupTimeRange.end);
+    if (timeFilters.deliveryTimeRange.start) params.set('delivery_time_start', timeFilters.deliveryTimeRange.start);
+    if (timeFilters.deliveryTimeRange.end) params.set('delivery_time_end', timeFilters.deliveryTimeRange.end);
+    if (timeFilters.shelveTimeRange.start) params.set('shelve_time_start', timeFilters.shelveTimeRange.start);
+    if (timeFilters.shelveTimeRange.end) params.set('shelve_time_end', timeFilters.shelveTimeRange.end);
 
     api.get<{
       success: boolean;
@@ -143,7 +147,7 @@ export default function TrackingPage() {
       });
 
     return () => { cancelled = true; };
-  }, [page, pageSize, filters, refreshKey, createTimeRange, departTimeRange, pickupTimeRange, deliveryTimeRange, shelveTimeRange]);
+  }, [page, pageSize, filters, refreshKey, timeFilters]);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
@@ -158,6 +162,7 @@ export default function TrackingPage() {
 
   const handleReset = useCallback(() => {
     setFilters({ ...DEFAULT_FILTERS });
+    setTimeFilters({ ...DEFAULT_TIME_FILTERS });
     setPage(1);
   }, []);
 
@@ -192,16 +197,28 @@ export default function TrackingPage() {
 
   const columns: ColumnDef[] = [
     {
+      key: 'transfer_no',
+      title: '调拨单号',
+      render: (_, row) => (
+        <span
+          className="font-medium text-accent cursor-pointer hover:text-accent-hover transition-colors"
+          onClick={() => navigate(`/orders/detail?transferNo=${row.transfer_no as string}`)}
+        >
+          {(row.transfer_no as string) || '--'}
+        </span>
+      ),
+    },
+    {
       key: 'inbound_order_no',
+      title: '第三方入库单号',
+      render: (_, row) => <span>{(row.inbound_order_no as string) || '--'}</span>,
+    },
+    {
+      key: 'inbound_carton',
       title: '入库单+箱号',
       render: (_, row) => (
         <div>
-          <span
-            className="font-medium text-accent cursor-pointer hover:text-accent-hover transition-colors"
-            onClick={() => navigate(`/orders/detail?transferNo=${row.transfer_no as string}`)}
-          >
-            {(row.inbound_order_no as string) || '--'}
-          </span>
+          <span className="text-text-secondary">{(row.inbound_order_no as string) || '--'}</span>
           {(row.carton_no as string) && (
             <div className="text-[11px] text-text-tertiary">{row.carton_no as string}</div>
           )}
@@ -326,43 +343,7 @@ export default function TrackingPage() {
           />
           <Button icon={Search} onClick={handleSearch}>搜索</Button>
           <Button variant="ghost" icon={RotateCcw} onClick={handleReset}>重置</Button>
-        </div>
-        <div className="flex flex-wrap items-end gap-3 mt-3">
-          <DateRangeFilter
-            label="创建时间"
-            startValue={createTimeRange.start}
-            endValue={createTimeRange.end}
-            onStartChange={(v) => setCreateTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setCreateTimeRange((r) => ({ ...r, end: v }))}
-          />
-          <DateRangeFilter
-            label="出库时间"
-            startValue={departTimeRange.start}
-            endValue={departTimeRange.end}
-            onStartChange={(v) => setDepartTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setDepartTimeRange((r) => ({ ...r, end: v }))}
-          />
-          <DateRangeFilter
-            label="收件时间"
-            startValue={pickupTimeRange.start}
-            endValue={pickupTimeRange.end}
-            onStartChange={(v) => setPickupTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setPickupTimeRange((r) => ({ ...r, end: v }))}
-          />
-          <DateRangeFilter
-            label="签收时间"
-            startValue={deliveryTimeRange.start}
-            endValue={deliveryTimeRange.end}
-            onStartChange={(v) => setDeliveryTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setDeliveryTimeRange((r) => ({ ...r, end: v }))}
-          />
-          <DateRangeFilter
-            label="上架时间"
-            startValue={shelveTimeRange.start}
-            endValue={shelveTimeRange.end}
-            onStartChange={(v) => setShelveTimeRange((r) => ({ ...r, start: v }))}
-            onEndChange={(v) => setShelveTimeRange((r) => ({ ...r, end: v }))}
-          />
+          <TimeFilterPanel filters={timeFilters} onChange={setTimeFilters} />
         </div>
       </Card>
 
