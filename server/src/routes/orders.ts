@@ -303,20 +303,12 @@ orders.post('/xquery', async (c) => {
     return c.json({ success: false, error: 'Transfer order not found' }, 404);
   }
 
-  const [items, cartons, trackingEvents, discrepancyRecords, freightBills, changeLogs] =
-    await Promise.all([
-      db('transfer_order_items').where({ transfer_no: transferNo }),
-      db('transfer_cartons').where({ transfer_no: transferNo }),
-      db('tracking_events')
-        .where({ transfer_no: transferNo })
-        .orderBy('event_time', 'desc'),
-      db('discrepancy_records').where({ transfer_no: transferNo }),
-      db('freight_bills').where({ transfer_no: transferNo }),
-      db('change_logs')
-        .where({ transfer_no: transferNo })
-        .orderBy('change_time', 'desc')
-        .limit(20),
-    ]);
+  const items = await db('transfer_order_items').where({ transfer_no: transferNo });
+  const cartons = await db('transfer_cartons').where({ transfer_no: transferNo });
+  const trackingEvents = await db('tracking_events').where({ transfer_no: transferNo }).orderBy('event_time', 'desc');
+  const discrepancyRecords = await db('discrepancy_records').where({ transfer_no: transferNo });
+  const freightBills = await db('freight_bills').where({ transfer_no: transferNo });
+  const changeLogs = await db('change_logs').where({ transfer_no: transferNo }).orderBy('change_time', 'desc').limit(20);
 
   const cartonNos = cartons.map((ct: any) => ct.carton_no);
   let cartonItems: any[] = [];
