@@ -30,7 +30,8 @@ jobs:
       - run: npm run build --workspace=client
         env:
           GH_PAGES: true
-          VITE_DEMO_MODE: true
+          VITE_DEMO_MODE: false
+          VITE_API_URL: https://transfer-order-system-v20-production.up.railway.app/api
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

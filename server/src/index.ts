@@ -18,6 +18,7 @@ const app = new Hono();
 app.use('*', cors({
   origin: [
     'https://jameszeng222.github.io',
+    'https://transfer-order-system-v20-production.up.railway.app',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
   ],
