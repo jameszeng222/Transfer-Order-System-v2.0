@@ -265,6 +265,23 @@ orders.get('/in-progress', async (c) => {
   return c.json({ success: true, data: result });
 });
 
+orders.post('/debug-auth', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const body = await c.req.json().catch(() => ({}));
+  const user = c.get('user');
+  return c.json({
+    success: true,
+    debug: {
+      hasAuthHeader: !!authHeader,
+      authHeaderPrefix: authHeader?.substring(0, 20),
+      bodyKeys: Object.keys(body),
+      transferNo: body.transferNo,
+      hasUser: !!user,
+      userId: user?.userId,
+    },
+  });
+});
+
 const detailQuerySchema = z.object({
   transferNo: z.string().min(1),
 });
