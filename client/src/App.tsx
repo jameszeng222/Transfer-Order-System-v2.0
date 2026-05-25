@@ -39,7 +39,7 @@ function AppRoutes() {
       <Route path="/login" element={token ? <Navigate to="/" /> : <LoginPage />} />
       <Route path="/" element={<ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>} />
       <Route path="/orders" element={<ProtectedRoute><Layout><OrderListPage /></Layout></ProtectedRoute>} />
-      <Route path="/orders/:transferNo" element={<ProtectedRoute><Layout><OrderDetailPage /></Layout></ProtectedRoute>} />
+      <Route path="/orders/detail" element={<ProtectedRoute><Layout><OrderDetailPage /></Layout></ProtectedRoute>} />
       <Route path="/imports" element={<ProtectedRoute><Layout><ImportPage /></Layout></ProtectedRoute>} />
       <Route path="/tracking" element={<ProtectedRoute><Layout><TrackingPage /></Layout></ProtectedRoute>} />
       <Route path="/warehouses" element={<ProtectedRoute><Layout><WarehousePage /></Layout></ProtectedRoute>} />

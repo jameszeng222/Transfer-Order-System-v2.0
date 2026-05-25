@@ -265,8 +265,11 @@ orders.get('/in-progress', async (c) => {
   return c.json({ success: true, data: result });
 });
 
-orders.get('/:transferNo', async (c) => {
-  const transferNo = c.req.param('transferNo');
+orders.get('/detail', async (c) => {
+  const transferNo = c.req.query('transferNo');
+  if (!transferNo) {
+    return c.json({ success: false, error: 'transferNo is required' }, 400);
+  }
 
   const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
   if (!order) {
@@ -323,8 +326,11 @@ orders.get('/:transferNo', async (c) => {
   });
 });
 
-orders.put('/:transferNo/status', zValidator('json', statusChangeSchema), async (c) => {
-  const transferNo = c.req.param('transferNo');
+orders.put('/status', zValidator('json', statusChangeSchema), async (c) => {
+  const transferNo = c.req.query('transferNo');
+  if (!transferNo) {
+    return c.json({ success: false, error: 'transferNo is required' }, 400);
+  }
   const { status: newStatus, remark } = c.req.valid('json');
   const user = c.get('user');
 
@@ -384,8 +390,11 @@ orders.put('/:transferNo/status', zValidator('json', statusChangeSchema), async 
   return c.json({ success: true, data: updated });
 });
 
-orders.put('/:transferNo', zValidator('json', editOrderSchema), async (c) => {
-  const transferNo = c.req.param('transferNo');
+orders.put('/edit', zValidator('json', editOrderSchema), async (c) => {
+  const transferNo = c.req.query('transferNo');
+  if (!transferNo) {
+    return c.json({ success: false, error: 'transferNo is required' }, 400);
+  }
   const body = c.req.valid('json');
   const user = c.get('user');
 

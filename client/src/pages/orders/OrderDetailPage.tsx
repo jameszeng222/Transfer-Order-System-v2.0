@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { api } from '../../api/client';
 import { TransferStatusLabel, TransportTypeLabel } from 'shared/constants';
@@ -70,7 +70,8 @@ function formatShortDate(val: string | null | undefined): string {
 }
 
 export default function OrderDetailPage() {
-  const { transferNo } = useParams<{ transferNo: string }>();
+  const [searchParams] = useSearchParams();
+  const transferNo = searchParams.get('transferNo') || '';
   const navigate = useNavigate();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +80,7 @@ export default function OrderDetailPage() {
   const fetchOrder = useCallback((tn: string) => {
     if (!tn) return;
     setLoading(true);
-    api.get<{ success: boolean; data: OrderDetail }>(`/orders/${tn}`)
+    api.get<{ success: boolean; data: OrderDetail }>(`/orders/detail?transferNo=${tn}`)
       .then((res) => { if (res.success) setOrder(res.data); })
       .catch(() => { setOrder(null); })
       .finally(() => { setLoading(false); });
@@ -96,7 +97,7 @@ export default function OrderDetailPage() {
     if (!confirm(`确认执行「${label}」操作？`)) return;
     setActionLoading(true);
     try {
-      const res = await api.put<{ success: boolean; data: OrderDetail; error?: string }>(`/orders/${transferNo}/status`, { status: newStatus });
+      const res = await api.put<{ success: boolean; data: OrderDetail; error?: string }>(`/orders/status?transferNo=${transferNo}`, { status: newStatus });
       if (res.success) await fetchOrder(transferNo!);
       else alert(res.error || '操作失败');
     } catch (err: unknown) {
