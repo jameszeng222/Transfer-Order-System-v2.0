@@ -13,7 +13,6 @@ interface TableProps {
   data: Record<string, unknown>[];
   loading?: boolean;
   emptyText?: string;
-  striped?: boolean;
   className?: string;
 }
 
@@ -28,69 +27,64 @@ export function Table({
   data,
   loading = false,
   emptyText = '暂无数据',
-  striped = false,
   className = '',
 }: TableProps) {
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 overflow-hidden ${className}`}>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              {columns.map((col) => (
-                <th
-                  key={col.key}
-                  className={`px-4 py-3 font-medium text-gray-600 ${alignClasses[col.align || 'left']}`}
-                  style={col.width ? { width: col.width } : undefined}
-                >
-                  {col.title}
-                </th>
-              ))}
+    <div className={`overflow-x-auto ${className}`}>
+      <table className="w-full text-[12.5px]">
+        <thead>
+          <tr>
+            {columns.map((col) => (
+              <th
+                key={col.key}
+                className={`px-4 py-2.5 text-left font-medium text-text-tertiary text-[11px] uppercase tracking-wide border-b border-border-light bg-bg ${alignClasses[col.align || 'left']}`}
+                style={col.width ? { width: col.width } : undefined}
+              >
+                {col.title}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {loading ? (
+            <tr>
+              <td
+                colSpan={columns.length}
+                className="text-center py-16 text-text-tertiary text-[13px]"
+              >
+                加载中...
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td
-                  colSpan={columns.length}
-                  className="text-center py-12 text-gray-400"
-                >
-                  加载中...
-                </td>
+          ) : data.length === 0 ? (
+            <tr>
+              <td
+                colSpan={columns.length}
+                className="text-center py-16 text-text-tertiary text-[13px]"
+              >
+                {emptyText}
+              </td>
+            </tr>
+          ) : (
+            data.map((row, rowIdx) => (
+              <tr
+                key={rowIdx}
+                className={`hover:bg-bg-hover cursor-pointer ${rowIdx < data.length - 1 ? 'border-b border-border-light' : ''}`}
+              >
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    className={`px-4 py-2.5 text-text-secondary ${alignClasses[col.align || 'left']}`}
+                  >
+                    {col.render
+                      ? col.render(row[col.key], row)
+                      : (row[col.key] as ReactNode) ?? '--'}
+                  </td>
+                ))}
               </tr>
-            ) : data.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={columns.length}
-                  className="text-center py-12 text-gray-400"
-                >
-                  {emptyText}
-                </td>
-              </tr>
-            ) : (
-              data.map((row, rowIdx) => (
-                <tr
-                  key={rowIdx}
-                  className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                    striped && rowIdx % 2 === 1 ? 'bg-gray-50/50' : ''
-                  }`}
-                >
-                  {columns.map((col) => (
-                    <td
-                      key={col.key}
-                      className={`px-4 py-3 text-gray-700 ${alignClasses[col.align || 'left']}`}
-                    >
-                      {col.render
-                        ? col.render(row[col.key], row)
-                        : (row[col.key] as ReactNode) ?? '--'}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+            ))
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }

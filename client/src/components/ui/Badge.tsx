@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 
 type BadgeVariant =
-  | 'default'
-  | 'primary'
-  | 'success'
-  | 'warning'
-  | 'danger'
-  | 'info';
+  | 'pending'
+  | 'shipped'
+  | 'transit'
+  | 'received'
+  | 'shelved'
+  | 'complete'
+  | 'abnormal';
 
 interface BadgeProps {
   variant?: BadgeVariant;
@@ -16,25 +17,24 @@ interface BadgeProps {
 }
 
 const variantClasses: Record<BadgeVariant, string> = {
-  default: 'bg-gray-100 text-gray-700',
-  primary: 'bg-blue-100 text-blue-700',
-  success: 'bg-green-100 text-green-700',
-  warning: 'bg-amber-100 text-amber-700',
-  danger: 'bg-red-100 text-red-700',
-  info: 'bg-cyan-100 text-cyan-700',
+  pending: 'bg-bg-hover text-text-tertiary',
+  shipped: 'bg-accent-light text-accent',
+  transit: 'bg-orange-light text-orange',
+  received: 'bg-green-light text-green',
+  shelved: 'bg-teal-light text-teal',
+  complete: 'bg-purple-light text-purple',
+  abnormal: 'bg-red-light text-red',
 };
 
 export function Badge({
-  variant = 'default',
+  variant = 'pending',
   color,
   className = '',
   children,
 }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-        color || variantClasses[variant]
-      } ${className}`}
+      className={`inline-flex items-center px-2 py-[2px] rounded text-[11px] font-medium ${color || variantClasses[variant]} ${className}`}
     >
       {children}
     </span>

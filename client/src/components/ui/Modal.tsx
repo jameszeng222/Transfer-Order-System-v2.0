@@ -49,24 +49,24 @@ export function Modal({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/30"
+        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
-        className={`relative bg-white rounded-lg shadow-xl ${widthClasses[width]} w-full mx-4 ${className}`}
+        className={`relative bg-bg-card rounded-xl border border-border shadow-xl ${widthClasses[width]} w-full mx-4 ${className}`}
       >
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <h3 className="text-base font-medium text-gray-900">{title}</h3>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+            <h3 className="text-[15px] font-semibold text-text-primary">{title}</h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              className="text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer"
             >
-              <X size={18} />
+              <X size={18} strokeWidth={1.8} />
             </button>
           </div>
         )}
-        <div className="px-6 py-4">{children}</div>
+        <div className="px-6 py-5">{children}</div>
       </div>
     </div>,
     document.body,

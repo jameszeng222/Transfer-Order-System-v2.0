@@ -32,33 +32,31 @@ export function Pagination({
   if (total === 0) return null;
 
   return (
-    <div
-      className={`flex items-center justify-between px-4 py-3 border-t border-gray-200 ${className}`}
-    >
-      <span className="text-sm text-gray-500">
+    <div className={`flex items-center justify-between px-5 py-3 ${className}`}>
+      <span className="text-[12px] text-text-tertiary">
         共 {total} 条，第 {current}/{totalPages} 页
       </span>
       <div className="flex items-center gap-1">
         <button
           disabled={current <= 1}
           onClick={() => onChange(current - 1)}
-          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          className="px-3 py-[5px] text-[12px] border border-border rounded-md bg-bg-card text-text-secondary hover:bg-bg-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
           上一页
         </button>
         {getPages().map((p, idx) =>
           p === '...' ? (
-            <span key={`ellipsis-${idx}`} className="px-2 text-sm text-gray-400">
+            <span key={`ellipsis-${idx}`} className="px-1.5 text-[12px] text-text-tertiary">
               ...
             </span>
           ) : (
             <button
               key={p}
               onClick={() => onChange(p)}
-              className={`px-3 py-1.5 text-sm rounded-md transition-colors cursor-pointer ${
+              className={`px-3 py-[5px] text-[12px] rounded-md transition-colors cursor-pointer ${
                 p === current
-                  ? 'bg-blue-600 text-white'
-                  : 'border border-gray-300 hover:bg-gray-50'
+                  ? 'bg-accent text-white'
+                  : 'border border-border bg-bg-card text-text-secondary hover:bg-bg-hover'
               }`}
             >
               {p}
@@ -68,7 +66,7 @@ export function Pagination({
         <button
           disabled={current >= totalPages}
           onClick={() => onChange(current + 1)}
-          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          className="px-3 py-[5px] text-[12px] border border-border rounded-md bg-bg-card text-text-secondary hover:bg-bg-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
           下一页
         </button>

@@ -1,286 +1,204 @@
-import { useState, useRef, useCallback } from 'react';
-import { Upload, Download, FileSpreadsheet, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Upload } from 'lucide-react';
+import { Button, Card, Badge } from '../../components/ui';
 
-interface RowError {
-  row: number;
-  message: string;
-}
+interface RowError { row: number; message: string; }
+interface ImportResult { total: number; success: number; failed: number; errors: RowError[]; createdOrders: number; updatedOrders: number; }
+interface ImportHistory { time: string; type: string; filename: string; success: number; failed: number; operator: string; }
 
-interface ImportResult {
-  total: number;
-  success: number;
-  failed: number;
-  errors: RowError[];
-  createdOrders: number;
-  updatedOrders: number;
-}
-
-interface TabConfig {
+interface ImportCardConfig {
   key: string;
   label: string;
-  subLabel: string;
-  templateType: string;
+  badge?: string;
+  badgeVariant?: 'pending' | 'shipped' | 'transit' | 'received' | 'shelved' | 'complete' | 'abnormal';
+  description: string;
   endpoint: string;
 }
 
-const TABS: TabConfig[] = [
-  { key: 'main', label: '调拨单导入', subLabel: '5.1', templateType: 'main', endpoint: '/imports/upload' },
-  { key: 'outbound', label: '出库回传', subLabel: '5.2', templateType: 'outbound', endpoint: '/imports/outbound' },
-  { key: 'logistics', label: '物流信息', subLabel: '5.3', templateType: 'logistics', endpoint: '/imports/logistics' },
-  { key: 'inbound', label: '入库回传', subLabel: '5.4', templateType: 'inbound', endpoint: '/imports/inbound' },
-  { key: 'logistics-events', label: '物流事件', subLabel: '5.3细', templateType: 'logistics-events', endpoint: '/imports/logistics-events' },
+const IMPORT_CARDS: ImportCardConfig[] = [
+  { key: 'main', label: '调拨单导入', badge: '主导入', badgeVariant: 'pending', description: '箱×SKU粒度，一次性导入全部基础信息', endpoint: '/imports/upload' },
+  { key: 'logistics-events', label: '物流时间节点', description: '周一/三/五批量导入', endpoint: '/imports/logistics-events' },
+  { key: 'outbound', label: '运费账单', description: '确认后自动分摊到SKU', endpoint: '/imports/outbound' },
+  { key: 'inbound', label: '预估单价', description: '自动计算预估运费', endpoint: '/imports/inbound' },
+  { key: 'logistics', label: '异常备注', description: '物流异常/上架异常核实备注', endpoint: '/imports/logistics' },
+  { key: 'reconcile', label: '运费对账', description: '确认对账和付款状态', endpoint: '/imports/reconcile' },
 ];
 
 export default function ImportPage() {
-  const [activeTab, setActiveTab] = useState('main');
-  const [file, setFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [history, setHistory] = useState<ImportHistory[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const currentTab = TABS.find((t) => t.key === activeTab)!;
-
-  const handleFileSelect = useCallback((f: File) => {
-    if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
-      setFile(f);
-      setResult(null);
-    } else {
-      alert('请选择 Excel 文件（.xlsx / .xls）');
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/imports/history', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) setHistory(data.data);
+    } catch {
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
     }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchHistory();
   }, []);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragOver(false);
-      const f = e.dataTransfer.files[0];
-      if (f) handleFileSelect(f);
-    },
-    [handleFileSelect],
-  );
-
-  const handleImport = async () => {
-    if (!file) return;
-    setLoading(true);
+  const handleFileSelect = async (config: ImportCardConfig, f: File) => {
+    if (!f.name.endsWith('.xlsx') && !f.name.endsWith('.xls')) {
+      alert('请选择 Excel 文件（.xlsx / .xls）');
+      return;
+    }
+    setLoadingKey(config.key);
     setResult(null);
-
     try {
       const token = localStorage.getItem('token');
       const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch(`/api${currentTab.endpoint}`, {
+      formData.append('file', f);
+      const res = await fetch(`/api${config.endpoint}`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-
       const data = await res.json();
       if (data.success) {
         setResult(data.data);
+        fetchHistory();
       } else {
-        setResult({
-          total: 0,
-          success: 0,
-          failed: 1,
-          errors: [{ row: 0, message: data.error || '导入失败' }],
-          createdOrders: 0,
-          updatedOrders: 0,
-        });
+        setResult({ total: 0, success: 0, failed: 1, errors: [{ row: 0, message: data.error || '导入失败' }], createdOrders: 0, updatedOrders: 0 });
       }
-    } catch (err: any) {
-      setResult({
-        total: 0,
-        success: 0,
-        failed: 1,
-        errors: [{ row: 0, message: err.message || '网络错误' }],
-        createdOrders: 0,
-        updatedOrders: 0,
-      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '网络错误';
+      setResult({ total: 0, success: 0, failed: 1, errors: [{ row: 0, message: msg }], createdOrders: 0, updatedOrders: 0 });
     } finally {
-      setLoading(false);
+      setLoadingKey(null);
     }
   };
 
-  const handleDownloadTemplate = () => {
-    const token = localStorage.getItem('token');
-    window.open(`/api/imports/templates/${currentTab.templateType}?token=${token}`, '_blank');
-  };
-
-  const resetState = () => {
-    setFile(null);
-    setResult(null);
-    if (inputRef.current) inputRef.current.value = '';
-  };
-
-  const handleTabChange = (key: string) => {
-    setActiveTab(key);
-    resetState();
+  const triggerFileInput = (key: string) => {
+    fileInputRefs.current[key]?.click();
   };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-gray-900">导入管理</h1>
-
-      <div className="flex border-b border-gray-200">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => handleTabChange(tab.key)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab.key
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            {tab.label}
-            <span className="ml-1 text-xs text-gray-400">({tab.subLabel})</span>
-          </button>
+      <div className="grid grid-cols-3 gap-3">
+        {IMPORT_CARDS.map((config) => (
+          <Card key={config.key}>
+            <div className="p-5">
+              <div className="text-[13px] font-semibold mb-1">
+                {config.label}
+                {config.badge && <Badge variant={config.badgeVariant || 'pending'} className="ml-1.5 text-[9px]">{config.badge}</Badge>}
+              </div>
+              <div className="text-xs text-text-tertiary mb-3">{config.description}</div>
+              <input
+                ref={(el) => { fileInputRefs.current[config.key] = el; }}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(config, f); e.target.value = ''; }}
+              />
+              <Button size="sm" icon={Upload} loading={loadingKey === config.key} onClick={() => triggerFileInput(config.key)}>选择文件上传</Button>
+            </div>
+          </Card>
         ))}
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-gray-700">{currentTab.label}</h3>
-          <button
-            onClick={handleDownloadTemplate}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
-          >
-            <Download size={14} />
-            下载模板
-          </button>
-        </div>
-
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => inputRef.current?.click()}
-          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-            dragOver
-              ? 'border-blue-400 bg-blue-50'
-              : file
-              ? 'border-green-300 bg-green-50'
-              : 'border-gray-300 hover:border-gray-400'
-          }`}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleFileSelect(f);
-            }}
-          />
-          {file ? (
-            <div className="flex flex-col items-center gap-2">
-              <FileSpreadsheet size={32} className="text-green-500" />
-              <span className="text-sm text-gray-700">{file.name}</span>
-              <span className="text-xs text-gray-400">{(file.size / 1024).toFixed(1)} KB</span>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2">
-              <Upload size={32} className="text-gray-400" />
-              <span className="text-sm text-gray-500">拖拽文件到此处，或点击选择文件</span>
-              <span className="text-xs text-gray-400">支持 .xlsx / .xls 格式</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between mt-4">
-          <button
-            onClick={resetState}
-            className="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            清除
-          </button>
-          <button
-            onClick={handleImport}
-            disabled={!file || loading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                导入中...
-              </>
-            ) : (
-              '开始导入'
-            )}
-          </button>
-        </div>
-      </div>
-
       {result && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-4">导入结果</h3>
-
-          <div className="grid grid-cols-4 gap-4 mb-4">
-            <div className="text-center p-3 bg-gray-50 rounded-lg">
-              <div className="text-lg font-semibold text-gray-900">{result.total}</div>
-              <div className="text-xs text-gray-500">总行数</div>
-            </div>
-            <div className="text-center p-3 bg-green-50 rounded-lg">
-              <div className="text-lg font-semibold text-green-600">{result.success}</div>
-              <div className="text-xs text-gray-500">成功</div>
-            </div>
-            <div className="text-center p-3 bg-red-50 rounded-lg">
-              <div className="text-lg font-semibold text-red-600">{result.failed}</div>
-              <div className="text-xs text-gray-500">失败</div>
-            </div>
-            <div className="text-center p-3 bg-blue-50 rounded-lg">
-              <div className="text-lg font-semibold text-blue-600">
-                {result.createdOrders + result.updatedOrders}
+        <Card title="导入结果">
+          <div className="p-5">
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              <div className="text-center p-4 bg-bg rounded-lg">
+                <div className="text-xl font-semibold text-text-primary tabular-nums">{result.total}</div>
+                <div className="text-xs text-text-tertiary mt-1">总行数</div>
               </div>
-              <div className="text-xs text-gray-500">
-                新建 {result.createdOrders} / 更新 {result.updatedOrders}
+              <div className="text-center p-4 bg-green-light rounded-lg">
+                <div className="text-xl font-semibold text-green tabular-nums">{result.success}</div>
+                <div className="text-xs text-text-tertiary mt-1">成功</div>
+              </div>
+              <div className="text-center p-4 bg-red-light rounded-lg">
+                <div className="text-xl font-semibold text-red tabular-nums">{result.failed}</div>
+                <div className="text-xs text-text-tertiary mt-1">失败</div>
+              </div>
+              <div className="text-center p-4 bg-accent-light rounded-lg">
+                <div className="text-xl font-semibold text-accent tabular-nums">{result.createdOrders + result.updatedOrders}</div>
+                <div className="text-xs text-text-tertiary mt-1">新建 {result.createdOrders} / 更新 {result.updatedOrders}</div>
               </div>
             </div>
-          </div>
-
-          {result.failed === 0 && (
-            <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
-              <CheckCircle size={16} />
-              全部导入成功
-            </div>
-          )}
-
-          {result.errors.length > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center gap-2 text-sm text-red-600 mb-2">
-                <XCircle size={16} />
-                错误详情
-              </div>
-              <div className="max-h-60 overflow-y-auto border border-red-200 rounded-lg">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-red-50">
-                      <th className="text-left px-3 py-2 font-medium text-red-700">行号</th>
-                      <th className="text-left px-3 py-2 font-medium text-red-700">错误信息</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.errors.map((err, idx) => (
-                      <tr key={idx} className="border-t border-red-100">
-                        <td className="px-3 py-2 text-gray-600">{err.row}</td>
-                        <td className="px-3 py-2 text-gray-700">{err.message}</td>
+            {result.errors.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 text-sm text-red mb-2">
+                  错误详情 <Badge variant="abnormal">{result.errors.length} 条</Badge>
+                </div>
+                <div className="max-h-60 overflow-y-auto border border-border-light rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-bg">
+                        <th className="text-left px-4 py-2.5 font-medium text-xs text-text-tertiary">行号</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-xs text-text-tertiary">错误信息</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {result.errors.map((err, idx) => (
+                        <tr key={idx} className="border-t border-border-light">
+                          <td className="px-4 py-2.5 text-text-secondary tabular-nums">{err.row}</td>
+                          <td className="px-4 py-2.5 text-text-primary">{err.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </Card>
       )}
+
+      <Card title="导入历史">
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12.5px]">
+            <thead>
+              <tr>
+                <th className="px-4 py-2.5 text-left font-medium text-text-tertiary text-[11px]">时间</th>
+                <th className="px-4 py-2.5 text-left font-medium text-text-tertiary text-[11px]">导入类型</th>
+                <th className="px-4 py-2.5 text-left font-medium text-text-tertiary text-[11px]">文件名</th>
+                <th className="px-4 py-2.5 text-left font-medium text-text-tertiary text-[11px]">成功</th>
+                <th className="px-4 py-2.5 text-left font-medium text-text-tertiary text-[11px]">失败</th>
+                <th className="px-4 py-2.5 text-left font-medium text-text-tertiary text-[11px]">操作人</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historyLoading ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-16 text-text-tertiary text-[13px]">加载中...</td>
+                </tr>
+              ) : history.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-16 text-text-tertiary text-[13px]">暂无数据</td>
+                </tr>
+              ) : (
+                history.map((row, idx) => (
+                  <tr key={idx} className={idx < history.length - 1 ? 'border-b border-border-light' : ''}>
+                    <td className="px-4 py-2.5 text-text-secondary">{row.time}</td>
+                    <td className="px-4 py-2.5 text-text-secondary">{row.type}</td>
+                    <td className="px-4 py-2.5 text-text-secondary">{row.filename}</td>
+                    <td className="px-4 py-2.5 text-green">{row.success}</td>
+                    <td className="px-4 py-2.5 text-red">{row.failed}</td>
+                    <td className="px-4 py-2.5 text-text-secondary">{row.operator}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

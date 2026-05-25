@@ -187,7 +187,7 @@ export default function UserPage() {
       render: (value: unknown) => {
         const strVal = String(value ?? '');
         const isActive = strVal === '1' || strVal === 'true';
-        return <Badge variant={isActive ? 'success' : 'danger'}>{isActive ? '启用' : '停用'}</Badge>;
+        return <Badge variant={isActive ? 'received' : 'abnormal'}>{isActive ? '启用' : '停用'}</Badge>;
       },
     },
     ...(canManage ? [{

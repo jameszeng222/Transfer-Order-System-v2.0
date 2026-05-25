@@ -1,62 +1,55 @@
 import type { ElementType } from 'react';
 
-type StatColor = 'blue' | 'green' | 'amber' | 'red';
+type StatColor = 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'teal';
 
 interface StatCardProps {
-  title: string;
+  label: string;
   value: string | number;
   icon?: ElementType;
   color?: StatColor;
-  subtitle?: string;
+  sub?: string;
+  trend?: { value: string; direction: 'up' | 'down' };
   className?: string;
 }
 
-const colorClasses: Record<StatColor, { border: string; icon: string }> = {
-  blue: {
-    border: 'border-l-blue-500',
-    icon: 'text-blue-600 bg-blue-50',
-  },
-  green: {
-    border: 'border-l-green-500',
-    icon: 'text-green-600 bg-green-50',
-  },
-  amber: {
-    border: 'border-l-amber-500',
-    icon: 'text-amber-600 bg-amber-50',
-  },
-  red: {
-    border: 'border-l-red-500',
-    icon: 'text-red-600 bg-red-50',
-  },
+const colorClasses: Record<StatColor, { icon: string }> = {
+  blue: { icon: 'text-accent bg-accent-light' },
+  green: { icon: 'text-green bg-green-light' },
+  orange: { icon: 'text-orange bg-orange-light' },
+  red: { icon: 'text-red bg-red-light' },
+  purple: { icon: 'text-purple bg-purple-light' },
+  teal: { icon: 'text-teal bg-teal-light' },
 };
 
 export function StatCard({
-  title,
+  label,
   value,
   icon: Icon,
   color = 'blue',
-  subtitle,
+  sub,
+  trend,
   className = '',
 }: StatCardProps) {
   const colors = colorClasses[color];
 
   return (
-    <div
-      className={`bg-white rounded-lg border border-gray-200 border-l-4 ${colors.border} p-5 ${className}`}
-    >
+    <div className={`bg-bg-card border border-border rounded-lg px-5 py-4 ${className}`}>
       <div className="flex items-center gap-4">
         {Icon && (
-          <div
-            className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${colors.icon}`}
-          >
-            <Icon size={20} />
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${colors.icon}`}>
+            <Icon size={18} strokeWidth={1.8} />
           </div>
         )}
         <div className="min-w-0">
-          <div className="text-2xl font-semibold text-gray-900">{value}</div>
-          <div className="text-sm text-gray-500 mt-0.5">{title}</div>
-          {subtitle && (
-            <div className="text-xs text-gray-400 mt-1">{subtitle}</div>
+          <div className="text-[12px] text-text-tertiary font-medium mb-1.5">{label}</div>
+          <div className="text-[28px] font-bold tracking-tight text-text-primary">{value}</div>
+          {sub && (
+            <div className="text-[11px] text-text-tertiary mt-1">{sub}</div>
+          )}
+          {trend && (
+            <div className={`text-[11px] font-medium mt-1 ${trend.direction === 'up' ? 'text-green' : 'text-red'}`}>
+              {trend.direction === 'up' ? '↑' : '↓'} {trend.value}
+            </div>
           )}
         </div>
       </div>

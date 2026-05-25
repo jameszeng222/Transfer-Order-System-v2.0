@@ -20,10 +20,10 @@ interface Stats {
 
 const PAGE_SIZE = 20;
 
-const STATUS_VARIANT: Record<string, 'warning' | 'primary' | 'success'> = {
-  PENDING: 'warning',
-  PROCESSING: 'primary',
-  CLOSED: 'success',
+const STATUS_VARIANT: Record<string, 'transit' | 'shipped' | 'received'> = {
+  PENDING: 'transit',
+  PROCESSING: 'shipped',
+  CLOSED: 'received',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -171,7 +171,7 @@ export default function DiscrepancyPage() {
     {
       key: 'discrepancy_category', title: '异常分类',
       render: (value: unknown) => (
-        <Badge variant="warning">{CATEGORY_LABEL[String(value)] || String(value)}</Badge>
+        <Badge variant="transit">{CATEGORY_LABEL[String(value)] || String(value)}</Badge>
       ),
     },
     { key: 'discrepancy_type', title: '异常类型' },
@@ -179,7 +179,7 @@ export default function DiscrepancyPage() {
     {
       key: 'status', title: '状态',
       render: (value: unknown) => (
-        <Badge variant={STATUS_VARIANT[String(value)] || 'default'}>
+        <Badge variant={STATUS_VARIANT[String(value)] || 'pending'}>
           {STATUS_LABEL[String(value)] || String(value)}
         </Badge>
       ),
@@ -210,9 +210,9 @@ export default function DiscrepancyPage() {
       <h1 className="text-lg font-semibold text-gray-900">异常管理</h1>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard title="待确认" value={stats.pending} icon={AlertTriangle} color="amber" />
-        <StatCard title="处理中" value={stats.processing} icon={Clock} color="blue" />
-        <StatCard title="已关闭" value={stats.closed} icon={CheckCircle2} color="green" />
+        <StatCard label="待确认" value={stats.pending} icon={AlertTriangle} color="orange" />
+        <StatCard label="处理中" value={stats.processing} icon={Clock} color="blue" />
+        <StatCard label="已关闭" value={stats.closed} icon={CheckCircle2} color="green" />
       </div>
 
       <Card padding="sm">

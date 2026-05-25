@@ -220,7 +220,7 @@ export default function ConfigPage({
               }
             : col.type === 'switch'
               ? (value: unknown) => (
-                  <Badge variant={value ? 'success' : 'default'}>
+                  <Badge variant={value ? 'received' : 'pending'}>
                     {value ? '启用' : '禁用'}
                   </Badge>
                 )

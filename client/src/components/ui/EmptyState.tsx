@@ -17,13 +17,13 @@ export function EmptyState({
   className = '',
 }: EmptyStateProps) {
   return (
-    <div className={`flex flex-col items-center justify-center py-16 ${className}`}>
-      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-        <Icon size={24} className="text-gray-400" />
+    <div className={`flex flex-col items-center justify-center py-20 ${className}`}>
+      <div className="w-12 h-12 rounded-xl bg-bg-hover flex items-center justify-center mb-4">
+        <Icon size={22} strokeWidth={1.5} className="text-text-tertiary" />
       </div>
-      <h3 className="text-sm font-medium text-gray-900 mb-1">{title}</h3>
+      <h3 className="text-[13px] font-medium text-text-primary mb-1">{title}</h3>
       {description && (
-        <p className="text-xs text-gray-500 mb-4 max-w-xs text-center">
+        <p className="text-[12px] text-text-tertiary mb-5 max-w-xs text-center">
           {description}
         </p>
       )}

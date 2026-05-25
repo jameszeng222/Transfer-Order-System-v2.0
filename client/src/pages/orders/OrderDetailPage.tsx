@@ -1,180 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { api } from '../../api/client';
 import { TransferStatusLabel, TransportTypeLabel } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
+import { Button, Card, Badge, Table, EmptyState } from '../../components/ui';
+import type { ColumnDef } from '../../components/ui';
 
-interface CartonItem {
-  id: number;
-  carton_no: string;
-  sku_code: string;
-  sku_name: string;
-  overseas_sku_code: string;
-  product_name: string;
-  qty: number;
-  shelf_qty: number;
-}
-
-interface Carton {
-  id: number;
-  carton_no: string;
-  logistics_tracking_no: string;
-  logistics_carrier_order_no: string;
-  carton_length: number;
-  carton_width: number;
-  carton_height: number;
-  carton_weight: number;
-  declared_value: number;
-  departure_time: string;
-  arrival_port_time: string;
-  customs_clearance_time: string;
-  last_mile_pickup_time: string;
-  logistics_sign_time: string;
-  unload_time: string;
-  shelf_time: string;
-  is_shelf_abnormal: number;
-  shelf_abnormal_type: string;
-  shelf_abnormal_remark: string;
-  carton_items: CartonItem[];
-}
-
-interface OrderItem {
-  id: number;
-  sku_code: string;
-  sku_name: string;
-  expected_qty: number;
-  outbound_qty: number;
-  inbound_qty: number;
-  shelf_qty: number;
-  outbound_diff: number;
-  inbound_diff: number;
-  total_diff: number;
-  diff_reason: string;
-  unit_weight: number;
-  unit_volume: number;
-  freight_cost_total: number;
-  freight_cost_per_unit: number;
-}
-
-interface TrackingEvent {
-  id: number;
-  event_time: string;
-  event_type: string;
-  event_desc: string;
-  location: string;
-  operator: string;
-}
-
-interface DiscrepancyRecord {
-  id: number;
-  carton_no: string;
-  sku_code: string;
-  discrepancy_category: string;
-  discrepancy_type: string;
-  discrepancy_qty: number;
-  status: string;
-  handler: string;
-  resolution: string;
-}
-
-interface FreightBill {
-  id: number;
-  bill_no: string;
-  logistics_carrier: string;
-  freight_fee: number;
-  customs_fee: number;
-  other_fee: number;
-  total_amount: number;
-  currency: string;
-  exchange_rate: number;
-  total_amount_cny: number;
-  bill_date: string;
-  bill_status: string;
-}
-
-interface ChangeLog {
-  id: number;
-  record_type: string;
-  record_id: number;
-  field_name: string;
-  old_value: string;
-  new_value: string;
-  change_source: string;
-  operator: string;
-  change_time: string;
-  reason: string;
-}
+interface CartonItem { id: number; carton_no: string; sku_code: string; sku_name: string; overseas_sku_code: string; product_name: string; qty: number; shelf_qty: number; }
+interface Carton { id: number; carton_no: string; logistics_tracking_no: string; logistics_carrier_order_no: string; carton_length: number; carton_width: number; carton_height: number; carton_weight: number; declared_value: number; departure_time: string; arrival_port_time: string; customs_clearance_time: string; last_mile_pickup_time: string; logistics_sign_time: string; unload_time: string; shelf_time: string; is_shelf_abnormal: number; shelf_abnormal_type: string; shelf_abnormal_remark: string; carton_items: CartonItem[]; }
+interface OrderItem { id: number; sku_code: string; sku_name: string; overseas_sku_code: string; expected_qty: number; outbound_qty: number; inbound_qty: number; shelf_qty: number; outbound_diff: number; inbound_diff: number; total_diff: number; diff_reason: string; unit_weight: number; unit_volume: number; freight_cost_total: number; freight_cost_per_unit: number; }
+interface TrackingEvent { id: number; event_time: string; event_type: string; event_desc: string; location: string; operator: string; }
+interface ChangeLog { id: number; record_type: string; record_id: number; field_name: string; old_value: string; new_value: string; change_source: string; operator: string; change_time: string; reason: string; }
 
 interface OrderDetail {
-  id: number;
-  transfer_no: string;
-  erp_order_no: string;
-  outbound_order_no: string;
-  inbound_order_no: string;
-  from_warehouse: string;
-  to_warehouse: string;
-  team: string;
-  source: string;
-  transfer_type: string;
-  status: TransferStatus;
-  transport_type: TransportType;
-  total_sku_count: number;
-  total_qty: number;
-  total_carton_count: number;
-  logistics_status: string;
-  expected_arrival_date: string;
-  actual_arrival_date: string;
-  expected_shelf_date: string;
-  logistics_carrier: string;
-  logistics_tracking_no: string;
-  is_customs_declared: number;
-  customs_factory: string;
-  is_inspected: number;
-  timeline_requirement_days: number;
-  order_remark: string;
-  last_mile_type: string;
-  last_mile_channel: string;
-  pickup_time: string;
-  depart_time: string;
-  arrive_port_time: string;
-  clearance_time: string;
-  last_mile_pickup_time: string;
-  delivery_time: string;
-  unload_time: string;
-  shelve_time: string;
-  is_logistics_abnormal: number;
-  logistics_abnormal_type: string;
-  logistics_abnormal_remark: string;
-  is_shelf_abnormal: number;
-  shelf_abnormal_type: string;
-  shelf_abnormal_remark: string;
-  delay_explanation: string;
-  estimated_unit_price: number;
-  estimated_freight: number;
-  total_freight_amount: number;
-  freight_currency: string;
-  freight_allocation_method: string;
-  is_reconciled: number;
-  is_paid: number;
-  create_time: string;
-  update_time: string;
-  remark: string;
-  items: OrderItem[];
-  cartons: Carton[];
-  tracking_events: TrackingEvent[];
-  discrepancy_records: DiscrepancyRecord[];
-  freight_bills: FreightBill[];
-  change_logs: ChangeLog[];
+  id: number; transfer_no: string; erp_order_no: string; outbound_order_no: string; inbound_order_no: string;
+  from_warehouse: string; to_warehouse: string; team: string; source: string; transfer_type: string;
+  status: TransferStatus; transport_type: TransportType; total_sku_count: number; total_qty: number;
+  total_carton_count: number; logistics_status: string; expected_arrival_date: string; actual_arrival_date: string;
+  expected_shelf_date: string; logistics_carrier: string; logistics_tracking_no: string;
+  is_customs_declared: number; customs_factory: string; is_inspected: number; timeline_requirement_days: number;
+  order_remark: string; last_mile_type: string; last_mile_channel: string; pickup_time: string;
+  depart_time: string; arrive_port_time: string; clearance_time: string; last_mile_pickup_time: string;
+  delivery_time: string; unload_time: string; shelve_time: string;
+  is_logistics_abnormal: number; logistics_abnormal_type: string; logistics_abnormal_remark: string;
+  is_shelf_abnormal: number; shelf_abnormal_type: string; shelf_abnormal_remark: string;
+  delay_explanation: string; estimated_unit_price: number; estimated_freight: number; total_freight_amount: number;
+  freight_currency: string; freight_allocation_method: string; is_reconciled: number; is_paid: number;
+  create_time: string; update_time: string; remark: string;
+  items: OrderItem[]; cartons: Carton[]; tracking_events: TrackingEvent[]; change_logs: ChangeLog[];
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  PENDING_OUTBOUND: 'bg-gray-100 text-gray-700',
-  OUTBOUNDED: 'bg-blue-100 text-blue-700',
-  IN_TRANSIT: 'bg-orange-100 text-orange-700',
-  RECEIVED: 'bg-green-100 text-green-700',
-  SHELVED: 'bg-emerald-100 text-emerald-700',
-  COMPLETED: 'bg-indigo-100 text-indigo-700',
-  CANCELLED: 'bg-red-100 text-red-700',
+const STATUS_BADGE_MAP: Record<string, 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'complete'> = {
+  PENDING_OUTBOUND: 'pending', OUTBOUNDED: 'shipped', IN_TRANSIT: 'transit',
+  RECEIVED: 'received', SHELVED: 'shelved', COMPLETED: 'complete', CANCELLED: 'abnormal',
 };
 
 const NEXT_STATUS: Record<string, { label: string; value: TransferStatus }> = {
@@ -185,42 +44,29 @@ const NEXT_STATUS: Record<string, { label: string; value: TransferStatus }> = {
   SHELVED: { label: '确认完成', value: 'COMPLETED' },
 };
 
-const TABS = ['基础信息', '箱级明细', 'SKU汇总', '物流轨迹', '操作历史'] as const;
-type TabName = (typeof TABS)[number];
+const TIMELINE_NODES = [
+  { key: 'pickup', label: '收件', timeField: 'pickup_time' as const },
+  { key: 'depart', label: '离港', timeField: 'depart_time' as const },
+  { key: 'arrive_port', label: '到港', timeField: 'arrive_port_time' as const },
+  { key: 'clearance', label: '清关', timeField: 'clearance_time' as const },
+  { key: 'last_mile', label: '提取', timeField: 'last_mile_pickup_time' as const },
+  { key: 'delivery', label: '签收', timeField: 'delivery_time' as const },
+  { key: 'unload', label: '卸货', timeField: 'unload_time' as const },
+  { key: 'shelve', label: '上架', timeField: 'shelve_time' as const },
+];
 
-function formatDateTime(val: string | null | undefined): string {
-  if (!val) return '--';
+const SLA_ITEMS = [
+  { label: '3天内上架', value: '待判断', status: 'pending' as const },
+  { label: '11天内完成', value: '待判断', status: 'pending' as const },
+  { label: '7天内完成', value: '不适用', status: 'na' as const },
+  { label: '4天内完成', value: '不适用', status: 'na' as const },
+];
+
+function formatShortDate(val: string | null | undefined): string {
+  if (!val) return '—';
   const d = new Date(val);
-  if (isNaN(d.getTime())) return '--';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const h = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  return `${y}-${m}-${day} ${h}:${min}`;
-}
-
-function formatMoney(val: number | null | undefined): string {
-  if (val == null) return '--';
-  return Number(val).toFixed(2);
-}
-
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start py-2 border-b border-gray-50">
-      <span className="w-32 shrink-0 text-sm text-gray-500">{label}</span>
-      <span className="text-sm text-gray-900">{children}</span>
-    </div>
-  );
-}
-
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-4">
-      <h3 className="text-sm font-semibold text-gray-800 mb-2 pb-2 border-b border-gray-200">{title}</h3>
-      <div className="pl-1">{children}</div>
-    </div>
-  );
+  if (isNaN(d.getTime())) return '—';
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export default function OrderDetailPage() {
@@ -228,28 +74,21 @@ export default function OrderDetailPage() {
   const navigate = useNavigate();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabName>('基础信息');
-  const [expandedCartons, setExpandedCartons] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState(false);
 
-  const fetchOrder = useCallback(async () => {
-    if (!transferNo) return;
+  const fetchOrder = useCallback((tn: string) => {
+    if (!tn) return;
     setLoading(true);
-    try {
-      const res = await api.get<{ success: boolean; data: OrderDetail }>(`/orders/${transferNo}`);
-      if (res.success) {
-        setOrder(res.data);
-      }
-    } catch {
-      setOrder(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [transferNo]);
+    api.get<{ success: boolean; data: OrderDetail }>(`/orders/${tn}`)
+      .then((res) => { if (res.success) setOrder(res.data); })
+      .catch(() => { setOrder(null); })
+      .finally(() => { setLoading(false); });
+  }, []);
 
   useEffect(() => {
-    fetchOrder();
-  }, [fetchOrder]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (transferNo) fetchOrder(transferNo);
+  }, [transferNo, fetchOrder]);
 
   const handleStatusChange = async (newStatus: TransferStatus) => {
     if (!transferNo || !order) return;
@@ -257,366 +96,285 @@ export default function OrderDetailPage() {
     if (!confirm(`确认执行「${label}」操作？`)) return;
     setActionLoading(true);
     try {
-      const res = await api.put<{ success: boolean; data: OrderDetail; error?: string }>(
-        `/orders/${transferNo}/status`,
-        { status: newStatus }
-      );
-      if (res.success) {
-        await fetchOrder();
-      } else {
-        alert(res.error || '操作失败');
-      }
-    } catch (err: any) {
-      alert(err.message || '操作失败');
-    } finally {
-      setActionLoading(false);
-    }
+      const res = await api.put<{ success: boolean; data: OrderDetail; error?: string }>(`/orders/${transferNo}/status`, { status: newStatus });
+      if (res.success) await fetchOrder(transferNo!);
+      else alert(res.error || '操作失败');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '操作失败';
+      alert(msg);
+    } finally { setActionLoading(false); }
   };
 
-  const toggleCarton = (cartonNo: string) => {
-    setExpandedCartons((prev) => {
-      const next = new Set(prev);
-      if (next.has(cartonNo)) {
-        next.delete(cartonNo);
-      } else {
-        next.add(cartonNo);
-      }
-      return next;
-    });
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <span className="text-gray-400">加载中...</span>
-      </div>
-    );
-  }
-
-  if (!order) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <span className="text-gray-400">调拨单不存在</span>
-        <button
-          onClick={() => navigate('/orders')}
-          className="text-blue-600 hover:text-blue-800 text-sm"
-        >
-          返回列表
-        </button>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center py-24"><span className="text-sm text-text-tertiary">加载中...</span></div>;
+  if (!order) return <EmptyState title="调拨单不存在" action={<Button variant="ghost" onClick={() => navigate('/orders')}>返回列表</Button>} />;
 
   const nextStatus = NEXT_STATUS[order.status];
 
+  const timelineData = TIMELINE_NODES.map((node) => {
+    const timeVal = order[node.timeField];
+    return { ...node, time: formatShortDate(timeVal), hasTime: !!timeVal };
+  });
+
+  let currentIdx = -1;
+  for (let i = timelineData.length - 1; i >= 0; i--) {
+    if (timelineData[i].hasTime) { currentIdx = i; break; }
+  }
+
+  const metaGroups = [
+    {
+      title: '单据信息',
+      items: [
+        { label: '入库单号', value: order.inbound_order_no || '--' },
+        { label: '调拨单号', value: order.transfer_no },
+        { label: '出库单号', value: order.outbound_order_no || '--' },
+        { label: 'ERP订单号', value: order.erp_order_no || '--' },
+      ],
+    },
+    {
+      title: '仓配信息',
+      items: [
+        { label: '发货仓', value: order.from_warehouse },
+        { label: '目的仓', value: order.to_warehouse },
+        { label: '团队', value: order.team || '--' },
+        { label: '来源', value: order.source || '--' },
+      ],
+    },
+    {
+      title: '物流信息',
+      items: [
+        { label: '运输类型', value: order.transport_type ? TransportTypeLabel[order.transport_type as TransportType] || order.transport_type : '--' },
+        { label: '物流商', value: order.logistics_carrier || '--' },
+        { label: '跟踪号', value: order.logistics_tracking_no || '--' },
+        { label: '时效要求', value: order.timeline_requirement_days ? `${order.timeline_requirement_days}天` : '--' },
+      ],
+    },
+    {
+      title: '时间节点',
+      items: [
+        { label: '收件日期', value: order.pickup_time ? `${formatShortDate(order.pickup_time)}` : '--' },
+        { label: '预计签收', value: order.expected_arrival_date ? formatShortDate(order.expected_arrival_date) : '--' },
+        { label: '预计上架', value: order.expected_shelf_date ? formatShortDate(order.expected_shelf_date) : '--' },
+        { label: '实际到货', value: order.actual_arrival_date ? formatShortDate(order.actual_arrival_date) : '--' },
+      ],
+    },
+    {
+      title: '报关/尾程',
+      items: [
+        { label: '报关', value: order.is_customs_declared ? `是 · ${order.customs_factory || ''}` : '否' },
+        { label: '查验', value: order.is_inspected ? '是' : '否' },
+        { label: '尾程类型', value: order.last_mile_type || '--' },
+        { label: '尾程渠道', value: order.last_mile_channel || '--' },
+      ],
+    },
+  ];
+
+  const skuColumns: ColumnDef[] = [
+    { key: 'sku_code', title: '系统SKU', render: (_, row) => <span className="font-medium text-text-primary">{row.sku_code as string}</span> },
+    { key: 'overseas_sku_code', title: '海外仓SKU', render: (_, row) => <span className="text-text-tertiary">{(row.overseas_sku_code as string) || '--'}</span> },
+    { key: 'sku_name', title: '品名', render: (_, row) => (row.sku_name as string) || '--' },
+    { key: 'expected_qty', title: '计划数量' },
+    { key: 'outbound_qty', title: '实际发货' },
+    { key: 'shelf_qty', title: '上架数量', render: (_, row) => (row.shelf_qty as number) ?? '—' },
+    { key: 'total_diff', title: '上架差异', render: (_, row) => (row.total_diff as number) ?? '—' },
+    { key: 'freight_cost_per_unit', title: '运费成本/件', render: (_, row) => {
+      const val = row.freight_cost_per_unit as number;
+      return val != null ? <span className="text-text-tertiary">¥{val.toFixed(2)}</span> : <span className="text-text-tertiary">待分摊</span>;
+    }},
+  ];
+
+  const freightSkuColumns: ColumnDef[] = [
+    { key: 'sku_code', title: 'SKU', render: (_, row) => <span className="font-medium">{row.sku_code as string}</span> },
+    { key: 'outbound_qty', title: '数量' },
+    { key: 'freight_cost_total', title: '分摊总运费', render: (_, row) => `¥${((row.freight_cost_total as number) || 0).toLocaleString()}` },
+    { key: 'freight_cost_per_unit', title: '单件运费成本', render: (_, row) => {
+      const val = row.freight_cost_per_unit as number;
+      return val != null ? <span className="font-semibold text-accent">¥{val.toFixed(2)}</span> : '--';
+    }},
+  ];
+
+  const getCartonStatus = (ct: Carton): 'pending' | 'shipped' | 'transit' | 'received' | 'shelved' | 'complete' | 'abnormal' => {
+    if (ct.shelf_time) return 'shelved';
+    if (ct.logistics_sign_time) return 'received';
+    if (ct.is_shelf_abnormal) return 'abnormal';
+    return 'transit';
+  };
+
+  const getCartonStatusLabel = (ct: Carton): string => {
+    if (ct.shelf_time) return '已上架';
+    if (ct.logistics_sign_time) return '已签收';
+    if (ct.is_shelf_abnormal) return '上架异常';
+    return '在途';
+  };
+
+  const deviation = order.estimated_freight && order.total_freight_amount && order.estimated_freight > 0
+    ? ((order.total_freight_amount - order.estimated_freight) / order.estimated_freight * 100).toFixed(1)
+    : null;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/orders')}
-            className="text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            ← 返回
-          </button>
-          <h1 className="text-lg font-semibold text-gray-900">{order.transfer_no}</h1>
-          <span
-            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-700'}`}
-          >
-            {TransferStatusLabel[order.status] || order.status}
-          </span>
+      <div className="bg-bg-card border-b border-border">
+        <div className="px-7 pt-5 pb-4 flex items-center gap-4">
+          <Button variant="secondary" size="sm" icon={ArrowLeft} onClick={() => navigate('/orders')} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3">
+              <span className="text-base font-semibold text-text-primary">{order.inbound_order_no || order.transfer_no}</span>
+              <Badge variant={STATUS_BADGE_MAP[order.status] || 'pending'}>{TransferStatusLabel[order.status]}</Badge>
+            </div>
+            <div className="text-xs text-text-tertiary mt-1">调拨单号：{order.transfer_no}</div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            {nextStatus && <Button onClick={() => handleStatusChange(nextStatus.value)} loading={actionLoading}>{nextStatus.label}</Button>}
+            {order.status !== 'CANCELLED' && order.status !== 'COMPLETED' && (
+              <Button variant="danger" onClick={() => handleStatusChange('CANCELLED')} loading={actionLoading}>取消</Button>
+            )}
+          </div>
         </div>
-
-        <div className="flex gap-2">
-          {nextStatus && (
-            <button
-              onClick={() => handleStatusChange(nextStatus.value)}
-              disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              {actionLoading ? '处理中...' : nextStatus.label}
-            </button>
-          )}
-          {order.status !== 'CANCELLED' && order.status !== 'COMPLETED' && (
-            <button
-              onClick={() => handleStatusChange('CANCELLED')}
-              disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium text-red-600 border border-red-300 rounded-md hover:bg-red-50 disabled:opacity-50 transition-colors"
-            >
-              取消
-            </button>
-          )}
+        <div className="px-7 pb-5 grid grid-cols-5 gap-6">
+          {metaGroups.map((group) => (
+            <div key={group.title}>
+              <div className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider mb-2.5">{group.title}</div>
+              <div className="space-y-2">
+                {group.items.map((item) => (
+                  <div key={item.label} className="flex items-baseline justify-between gap-2">
+                    <span className="text-[11px] text-text-tertiary shrink-0">{item.label}</span>
+                    <span className="text-[13px] font-medium text-text-primary text-right truncate">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="flex border-b border-gray-200">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-5 py-3 text-sm font-medium transition-colors ${
-                activeTab === tab
-                  ? 'text-blue-700 border-b-2 border-blue-700'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        <div className="p-5">
-          {activeTab === '基础信息' && (
-            <div>
-              <SectionCard title="基本信息">
-                <FieldRow label="调拨单号">{order.transfer_no}</FieldRow>
-                <FieldRow label="入库单号">{order.inbound_order_no}</FieldRow>
-                <FieldRow label="ERP订单号">{order.erp_order_no || '--'}</FieldRow>
-                <FieldRow label="出库单号">{order.outbound_order_no || '--'}</FieldRow>
-                <FieldRow label="来源仓">{order.from_warehouse}</FieldRow>
-                <FieldRow label="目的仓">{order.to_warehouse}</FieldRow>
-                <FieldRow label="团队">{order.team || '--'}</FieldRow>
-                <FieldRow label="来源">{order.source || '--'}</FieldRow>
-                <FieldRow label="调拨类型">{order.transfer_type || '--'}</FieldRow>
-                <FieldRow label="运输类型">
-                  {order.transport_type ? TransportTypeLabel[order.transport_type as TransportType] || order.transport_type : '--'}
-                </FieldRow>
-                <FieldRow label="状态">
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[order.status]}`}>
-                    {TransferStatusLabel[order.status]}
-                  </span>
-                </FieldRow>
-                <FieldRow label="SKU数">{order.total_sku_count}</FieldRow>
-                <FieldRow label="总数量">{order.total_qty}</FieldRow>
-                <FieldRow label="箱数">{order.total_carton_count}</FieldRow>
-                <FieldRow label="创建时间">{formatDateTime(order.create_time)}</FieldRow>
-                <FieldRow label="更新时间">{formatDateTime(order.update_time)}</FieldRow>
-                <FieldRow label="备注">{order.remark || '--'}</FieldRow>
-                <FieldRow label="订单备注">{order.order_remark || '--'}</FieldRow>
-              </SectionCard>
-
-              <SectionCard title="物流信息">
-                <FieldRow label="物流商">{order.logistics_carrier || '--'}</FieldRow>
-                <FieldRow label="物流跟踪号">{order.logistics_tracking_no || '--'}</FieldRow>
-                <FieldRow label="物流状态">{order.logistics_status || '--'}</FieldRow>
-                <FieldRow label="是否报关">{order.is_customs_declared ? '是' : '否'}</FieldRow>
-                <FieldRow label="报关工厂">{order.customs_factory || '--'}</FieldRow>
-                <FieldRow label="是否查验">{order.is_inspected ? '是' : '否'}</FieldRow>
-                <FieldRow label="时效要求(天)">{order.timeline_requirement_days ?? '--'}</FieldRow>
-                <FieldRow label="末程类型">{order.last_mile_type || '--'}</FieldRow>
-                <FieldRow label="末程渠道">{order.last_mile_channel || '--'}</FieldRow>
-                <FieldRow label="提货时间">{formatDateTime(order.pickup_time)}</FieldRow>
-                <FieldRow label="发车时间">{formatDateTime(order.depart_time)}</FieldRow>
-                <FieldRow label="到港时间">{formatDateTime(order.arrive_port_time)}</FieldRow>
-                <FieldRow label="清关时间">{formatDateTime(order.clearance_time)}</FieldRow>
-                <FieldRow label="末程提货时间">{formatDateTime(order.last_mile_pickup_time)}</FieldRow>
-                <FieldRow label="签收时间">{formatDateTime(order.delivery_time)}</FieldRow>
-                <FieldRow label="卸货时间">{formatDateTime(order.unload_time)}</FieldRow>
-                <FieldRow label="上架时间">{formatDateTime(order.shelve_time)}</FieldRow>
-                <FieldRow label="预计到货日期">{order.expected_arrival_date || '--'}</FieldRow>
-                <FieldRow label="实际到货日期">{order.actual_arrival_date || '--'}</FieldRow>
-                <FieldRow label="预计上架日期">{order.expected_shelf_date || '--'}</FieldRow>
-              </SectionCard>
-
-              <SectionCard title="异常信息">
-                <FieldRow label="物流异常">{order.is_logistics_abnormal ? '是' : '否'}</FieldRow>
-                <FieldRow label="物流异常类型">{order.logistics_abnormal_type || '--'}</FieldRow>
-                <FieldRow label="物流异常备注">{order.logistics_abnormal_remark || '--'}</FieldRow>
-                <FieldRow label="上架异常">{order.is_shelf_abnormal ? '是' : '否'}</FieldRow>
-                <FieldRow label="上架异常类型">{order.shelf_abnormal_type || '--'}</FieldRow>
-                <FieldRow label="上架异常备注">{order.shelf_abnormal_remark || '--'}</FieldRow>
-                <FieldRow label="延迟说明">{order.delay_explanation || '--'}</FieldRow>
-              </SectionCard>
-
-              <SectionCard title="运费信息">
-                <FieldRow label="预估单价">{formatMoney(order.estimated_unit_price)}</FieldRow>
-                <FieldRow label="预估运费">{formatMoney(order.estimated_freight)}</FieldRow>
-                <FieldRow label="运费总额">{formatMoney(order.total_freight_amount)}</FieldRow>
-                <FieldRow label="运费币种">{order.freight_currency || '--'}</FieldRow>
-                <FieldRow label="运费分摊方式">{order.freight_allocation_method || '--'}</FieldRow>
-                <FieldRow label="已对账">{order.is_reconciled ? '是' : '否'}</FieldRow>
-                <FieldRow label="已付款">{order.is_paid ? '是' : '否'}</FieldRow>
-              </SectionCard>
-            </div>
-          )}
-
-          {activeTab === '箱级明细' && (
-            <div>
-              {order.cartons.length === 0 ? (
-                <p className="text-center py-8 text-gray-400">暂无箱数据</p>
-              ) : (
-                <div className="space-y-2">
-                  {order.cartons.map((ct) => (
-                    <div key={ct.carton_no} className="border border-gray-200 rounded-md">
-                      <button
-                        onClick={() => toggleCarton(ct.carton_no)}
-                        className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors"
-                      >
-                        <div className="flex items-center gap-4">
-                          <span className="font-medium text-gray-900">{ct.carton_no}</span>
-                          <span className="text-gray-500">跟踪号: {ct.logistics_tracking_no || '--'}</span>
-                          {ct.is_shelf_abnormal ? (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                              上架异常
-                            </span>
-                          ) : null}
-                        </div>
-                        <span className="text-gray-400">{expandedCartons.has(ct.carton_no) ? '▲' : '▼'}</span>
-                      </button>
-                      {expandedCartons.has(ct.carton_no) && (
-                        <div className="px-4 pb-3">
-                          <div className="grid grid-cols-4 gap-2 mb-3 text-xs text-gray-500">
-                            <span>尺寸: {ct.carton_length}×{ct.carton_width}×{ct.carton_height}</span>
-                            <span>重量: {ct.carton_weight ?? '--'}</span>
-                            <span>申报价值: {formatMoney(ct.declared_value)}</span>
-                            <span>签收时间: {formatDateTime(ct.logistics_sign_time)}</span>
-                          </div>
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="bg-gray-50">
-                                <th className="text-left px-2 py-1.5 font-medium text-gray-600">SKU</th>
-                                <th className="text-left px-2 py-1.5 font-medium text-gray-600">SKU名称</th>
-                                <th className="text-left px-2 py-1.5 font-medium text-gray-600">数量</th>
-                                <th className="text-left px-2 py-1.5 font-medium text-gray-600">上架数量</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(ct.carton_items || []).map((ci) => (
-                                <tr key={ci.id} className="border-t border-gray-100">
-                                  <td className="px-2 py-1.5 text-gray-700">{ci.sku_code}</td>
-                                  <td className="px-2 py-1.5 text-gray-700">{ci.sku_name || '--'}</td>
-                                  <td className="px-2 py-1.5 text-gray-700">{ci.qty}</td>
-                                  <td className="px-2 py-1.5 text-gray-700">{ci.shelf_qty}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+      <div className="px-7 space-y-4">
+        <Card title="物流节点" actions={<Button variant="secondary" size="sm">导入物流节点</Button>}>
+          <div className="px-5 py-4 flex items-center overflow-x-auto">
+            {timelineData.map((node, idx) => (
+              <div key={node.key} className="flex items-center">
+                <div className="flex flex-col items-center min-w-[72px]">
+                  <div className={`w-2.5 h-2.5 rounded-full mb-1.5 z-[2] ${
+                    idx < currentIdx ? 'bg-green' :
+                    idx === currentIdx ? 'bg-accent shadow-[0_0_0_3px_var(--accent-light)]' :
+                    'bg-border'
+                  }`} />
+                  <div className="text-[11px] text-text-tertiary text-center">{node.label}</div>
+                  <div className="text-[10px] text-text-tertiary mt-0.5">{idx <= currentIdx ? node.time : idx === currentIdx + 1 ? '待提取' : '—'}</div>
                 </div>
-              )}
-            </div>
-          )}
+                {idx < timelineData.length - 1 && (
+                  <div className={`flex-1 h-0.5 min-w-[20px] ${idx < currentIdx ? 'bg-green' : 'bg-border'}`} />
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
 
-          {activeTab === 'SKU汇总' && (
-            <div>
-              {order.items.length === 0 ? (
-                <p className="text-center py-8 text-gray-400">暂无SKU数据</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">SKU</th>
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">名称</th>
-                      <th className="text-right px-3 py-2.5 font-medium text-gray-600">预期</th>
-                      <th className="text-right px-3 py-2.5 font-medium text-gray-600">出库</th>
-                      <th className="text-right px-3 py-2.5 font-medium text-gray-600">入库</th>
-                      <th className="text-right px-3 py-2.5 font-medium text-gray-600">上架</th>
-                      <th className="text-right px-3 py-2.5 font-medium text-gray-600">出库差异</th>
-                      <th className="text-right px-3 py-2.5 font-medium text-gray-600">入库差异</th>
-                      <th className="text-right px-3 py-2.5 font-medium text-gray-600">总差异</th>
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">差异原因</th>
-                      <th className="text-right px-3 py-2.5 font-medium text-gray-600">运费</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {order.items.map((item) => (
-                      <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-900 font-medium">{item.sku_code}</td>
-                        <td className="px-3 py-2 text-gray-700">{item.sku_name || '--'}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{item.expected_qty}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{item.outbound_qty}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{item.inbound_qty}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{item.shelf_qty}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{item.outbound_diff ?? '--'}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{item.inbound_diff ?? '--'}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{item.total_diff ?? '--'}</td>
-                        <td className="px-3 py-2 text-gray-700">{item.diff_reason || '--'}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{formatMoney(item.freight_cost_total)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          )}
+        <Card title="SLA达标判断">
+          <div className="grid grid-cols-4 gap-2 px-5 py-4">
+            {SLA_ITEMS.map((item) => (
+              <div key={item.label} className="text-center p-2.5 rounded-md bg-bg">
+                <div className="text-[10px] text-text-tertiary mb-1">{item.label}</div>
+                <div className={`text-sm font-semibold ${item.status === 'na' ? 'text-text-tertiary' : 'text-text-tertiary'}`}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
 
-          {activeTab === '物流轨迹' && (
-            <div>
-              {order.tracking_events.length === 0 ? (
-                <p className="text-center py-8 text-gray-400">暂无物流轨迹</p>
-              ) : (
-                <div className="relative pl-6">
-                  <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-200" />
-                  {order.tracking_events.map((evt, idx) => (
-                    <div key={evt.id} className="relative pb-6 last:pb-0">
-                      <div
-                        className={`absolute -left-4 top-1 w-3 h-3 rounded-full border-2 ${
-                          idx === 0 ? 'bg-blue-500 border-blue-300' : 'bg-white border-gray-300'
-                        }`}
-                      />
-                      <div className="ml-2">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-sm font-medium text-gray-900">
-                            {evt.event_type}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {formatDateTime(evt.event_time)}
-                          </span>
-                        </div>
-                        {evt.event_desc && (
-                          <p className="text-sm text-gray-600">{evt.event_desc}</p>
-                        )}
-                        <div className="flex gap-3 text-xs text-gray-400 mt-0.5">
-                          {evt.location && <span>📍 {evt.location}</span>}
-                          {evt.operator && <span>👤 {evt.operator}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+        <Card title="SKU明细" actions={<Button variant="secondary" size="sm">编辑</Button>}>
+          <Table columns={skuColumns} data={order.items as unknown as Record<string, unknown>[]} />
+        </Card>
+
+        <Card title="箱明细" actions={
+          <div className="flex gap-1.5">
+            <Button variant="secondary" size="sm">导入箱规</Button>
+            <Button variant="secondary" size="sm">导入物流跟踪号</Button>
+          </div>
+        }>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 px-5 py-4">
+            {order.cartons.map((ct) => (
+              <div key={ct.carton_no} className="border border-border rounded-lg px-4 py-3.5 hover:shadow-sm hover:border-accent transition-all">
+                <div className="flex justify-between items-center mb-2.5">
+                  <span className="text-[13px] font-semibold" style={{ fontFamily: "'DM Sans', sans-serif" }}>{ct.carton_no}</span>
+                  <Badge variant={getCartonStatus(ct)}>{getCartonStatusLabel(ct)}</Badge>
                 </div>
-              )}
-            </div>
-          )}
+                <div className="grid grid-cols-2 gap-1.5 text-xs">
+                  <span className="text-text-tertiary">物流跟踪号</span>
+                  <span className="text-text-secondary text-right">{ct.logistics_tracking_no || '—'}</span>
+                  <span className="text-text-tertiary">箱规</span>
+                  <span className="text-text-secondary text-right">{ct.carton_length ? `${ct.carton_length}×${ct.carton_width}×${ct.carton_height}cm` : '—'}</span>
+                  <span className="text-text-tertiary">申报货值</span>
+                  <span className="text-text-secondary text-right">{ct.declared_value ? `¥${ct.declared_value.toLocaleString()}` : '—'}</span>
+                  <span className="text-text-tertiary">签收-上架</span>
+                  <span className="text-text-secondary text-right">{ct.shelf_time ? '已上架' : '未上架'}</span>
+                </div>
+              </div>
+            ))}
+            {order.cartons.length === 0 && (
+              <div className="col-span-full text-center py-8 text-text-tertiary text-sm">暂无箱数据</div>
+            )}
+          </div>
+        </Card>
 
-          {activeTab === '操作历史' && (
-            <div>
-              {order.change_logs.length === 0 ? (
-                <p className="text-center py-8 text-gray-400">暂无操作历史</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">时间</th>
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">操作人</th>
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">来源</th>
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">字段</th>
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">旧值</th>
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">新值</th>
-                      <th className="text-left px-3 py-2.5 font-medium text-gray-600">原因</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {order.change_logs.map((log) => (
-                      <tr key={log.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-700">{formatDateTime(log.change_time)}</td>
-                        <td className="px-3 py-2 text-gray-700">{log.operator}</td>
-                        <td className="px-3 py-2 text-gray-700">{log.change_source}</td>
-                        <td className="px-3 py-2 text-gray-900 font-medium">{log.field_name}</td>
-                        <td className="px-3 py-2 text-gray-500">{log.old_value || '--'}</td>
-                        <td className="px-3 py-2 text-gray-900">{log.new_value || '--'}</td>
-                        <td className="px-3 py-2 text-gray-500">{log.reason || '--'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+        <Card title="运费信息" actions={
+          <div className="flex gap-1.5">
+            <Button variant="secondary" size="sm">导入预估单价</Button>
+            <Button variant="secondary" size="sm">导入运费账单</Button>
+            <Button variant="secondary" size="sm">导入对账状态</Button>
+          </div>
+        }>
+          <div className="grid grid-cols-3 gap-4 px-5 py-4">
+            <div className="text-center p-3 bg-bg rounded-lg">
+              <div className="text-[11px] text-text-tertiary mb-1">预估运费</div>
+              <div className="text-lg font-bold text-orange" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+                {order.estimated_freight ? `¥${order.estimated_freight.toLocaleString()}` : '—'}
+              </div>
+              {order.estimated_unit_price && order.total_carton_count ? (
+                <div className="text-[11px] text-text-tertiary mt-0.5">¥{order.estimated_unit_price.toLocaleString()}/箱 × {order.total_carton_count}箱</div>
+              ) : null}
+            </div>
+            <div className="text-center p-3 bg-bg rounded-lg">
+              <div className="text-[11px] text-text-tertiary mb-1">最终运费</div>
+              <div className="text-lg font-bold text-green" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+                {order.total_freight_amount ? `¥${order.total_freight_amount.toLocaleString()}` : '—'}
+              </div>
+              {deviation && <div className="text-[11px] text-text-tertiary mt-0.5">偏差 {Number(deviation) >= 0 ? '+' : ''}{deviation}%</div>}
+            </div>
+            <div className="text-center p-3 bg-bg rounded-lg">
+              <div className="text-[11px] text-text-tertiary mb-1">对账/付款</div>
+              <div className="text-base font-semibold text-green">
+                {order.is_reconciled ? '已对账' : '未对账'} / {order.is_paid ? '已付款' : '未付款'}
+              </div>
+            </div>
+          </div>
+          {order.items.length > 0 && (
+            <div className="px-5 pb-4">
+              <div className="text-xs font-semibold mb-2 text-text-secondary">SKU运费成本（按数量分摊）</div>
+              <Table columns={freightSkuColumns} data={order.items as unknown as Record<string, unknown>[]} />
             </div>
           )}
-        </div>
+        </Card>
+
+        <Card title="异常状态" actions={<Button variant="secondary" size="sm">编辑</Button>}>
+          <div className="px-5 py-4 flex gap-6">
+            <div>
+              <span className="text-[11px] text-text-tertiary">物流异常</span>
+              <div className={`text-[13px] font-medium mt-0.5 ${order.is_logistics_abnormal ? 'text-red' : 'text-green'}`}>
+                {order.is_logistics_abnormal ? '是' : '否'}
+              </div>
+            </div>
+            <div>
+              <span className="text-[11px] text-text-tertiary">上架异常</span>
+              <div className="text-[13px] font-medium mt-0.5 text-text-tertiary">
+                {order.is_shelf_abnormal ? '是' : order.status === 'SHELVED' || order.status === 'COMPLETED' ? '否' : '—'}
+              </div>
+            </div>
+            <div>
+              <span className="text-[11px] text-text-tertiary">延迟说明</span>
+              <div className="text-[13px] font-medium mt-0.5 text-text-tertiary">
+                {order.delay_explanation || '—'}
+              </div>
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-type CardPadding = 'sm' | 'md' | 'lg';
+type CardPadding = 'none' | 'sm' | 'md';
 
 interface CardProps {
   title?: string;
@@ -12,37 +12,35 @@ interface CardProps {
 }
 
 const paddingClasses: Record<CardPadding, string> = {
-  sm: 'p-3',
-  md: 'p-5',
-  lg: 'p-6',
+  none: '',
+  sm: 'p-5',
+  md: 'p-6',
 };
 
 export function Card({
   title,
   subtitle,
   actions,
-  padding = 'md',
+  padding = 'none',
   className = '',
   children,
 }: CardProps) {
   return (
-    <div
-      className={`bg-white rounded-lg border border-gray-200 shadow-sm ${paddingClasses[padding]} ${className}`}
-    >
+    <div className={`bg-bg-card border border-border rounded-xl ${className}`}>
       {(title || actions) && (
-        <div className="flex items-start justify-between mb-4">
+        <div className="px-5 py-4 border-b border-border-light flex items-center justify-between">
           <div>
             {title && (
-              <h3 className="text-sm font-medium text-gray-900">{title}</h3>
+              <h3 className="text-[13px] font-semibold text-text-primary">{title}</h3>
             )}
             {subtitle && (
-              <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+              <p className="mt-0.5 text-[11px] text-text-tertiary">{subtitle}</p>
             )}
           </div>
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       )}
-      {children}
+      <div className={paddingClasses[padding]}>{children}</div>
     </div>
   );
 }

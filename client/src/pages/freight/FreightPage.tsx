@@ -27,10 +27,10 @@ interface Carrier {
 
 const PAGE_SIZE = 20;
 
-const STATUS_VARIANT: Record<string, 'warning' | 'primary' | 'success'> = {
-  PENDING: 'warning',
-  CONFIRMED: 'primary',
-  RECONCILED: 'success',
+const STATUS_VARIANT: Record<string, 'transit' | 'shipped' | 'received'> = {
+  PENDING: 'transit',
+  CONFIRMED: 'shipped',
+  RECONCILED: 'received',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -218,7 +218,7 @@ export default function FreightPage() {
     {
       key: 'bill_status', title: '状态',
       render: (value: unknown) => (
-        <Badge variant={STATUS_VARIANT[String(value)] || 'default'}>
+        <Badge variant={STATUS_VARIANT[String(value)] || 'pending'}>
           {STATUS_LABEL[String(value)] || String(value)}
         </Badge>
       ),
@@ -273,10 +273,10 @@ export default function FreightPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <StatCard title="待确认" value={stats.pending} icon={AlertCircle} color="amber" />
-        <StatCard title="已确认" value={stats.confirmed} icon={CheckCircle2} color="blue" />
-        <StatCard title="已对账" value={stats.reconciled} icon={FileCheck} color="green" />
-        <StatCard title="总金额(CNY)" value={stats.total_amount_cny} icon={DollarSign} color="red" />
+        <StatCard label="待确认" value={stats.pending} icon={AlertCircle} color="orange" />
+        <StatCard label="已确认" value={stats.confirmed} icon={CheckCircle2} color="blue" />
+        <StatCard label="已对账" value={stats.reconciled} icon={FileCheck} color="green" />
+        <StatCard label="总金额(CNY)" value={stats.total_amount_cny} icon={DollarSign} color="red" />
       </div>
 
       <Card padding="sm">

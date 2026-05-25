@@ -1,4 +1,4 @@
-
+import { useRef, useEffect } from 'react';
 
 type FieldType =
   | 'text'
@@ -41,6 +41,19 @@ export function FormField({
   disabled = false,
   className = '',
 }: FormFieldProps) {
+  const selectRef = useRef<HTMLSelectElement>(null);
+
+  useEffect(() => {
+    if (type === 'select' && selectRef.current) {
+      selectRef.current.style.backgroundImage = "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3b4' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e\")";
+      selectRef.current.style.backgroundPosition = 'right 8px center';
+      selectRef.current.style.backgroundRepeat = 'no-repeat';
+      selectRef.current.style.backgroundSize = '16px';
+      selectRef.current.style.appearance = 'none';
+      selectRef.current.style.paddingRight = '28px';
+    }
+  }, [type]);
+
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
@@ -52,17 +65,18 @@ export function FormField({
   };
 
   const inputClasses =
-    'w-full h-9 px-3 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400';
+    'w-full px-3 py-[7px] border border-border rounded-md text-[13px] bg-bg-card outline-none focus:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 
   const borderClass = error
-    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-    : 'border-gray-300 focus:border-blue-500';
+    ? 'border-red focus:border-red'
+    : '';
 
   const renderInput = () => {
     switch (type) {
       case 'select':
         return (
           <select
+            ref={selectRef}
             name={name}
             value={(value as string) || ''}
             onChange={handleChange}
@@ -87,7 +101,7 @@ export function FormField({
             disabled={disabled}
             placeholder={placeholder}
             rows={3}
-            className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400 ${borderClass}`}
+            className={`${inputClasses} ${borderClass}`}
           />
         );
 
@@ -100,7 +114,7 @@ export function FormField({
             disabled={disabled}
             onClick={() => onChange(name, !value)}
             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-              value ? 'bg-blue-600' : 'bg-gray-200'
+              value ? 'bg-accent' : 'bg-bg-hover'
             }`}
           >
             <span
@@ -165,15 +179,15 @@ export function FormField({
   };
 
   return (
-    <div className={`flex flex-col gap-1.5 ${className}`}>
+    <div className={`flex flex-col ${className}`}>
       {label && (
-        <label className="text-sm text-gray-700">
+        <label className="text-[11px] font-medium text-text-tertiary mb-1">
           {label}
-          {required && <span className="text-red-500 ml-0.5">*</span>}
+          {required && <span className="text-red ml-0.5">*</span>}
         </label>
       )}
       {renderInput()}
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-[11px] text-red mt-1">{error}</p>}
     </div>
   );
 }
