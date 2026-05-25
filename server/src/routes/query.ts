@@ -4,8 +4,9 @@ import { db } from '../db/index.js';
 const query = new Hono();
 
 query.post('/order', async (c) => {
+  let transferNo = '';
   const body = await c.req.json().catch(() => ({}));
-  const transferNo = body.transferNo;
+  transferNo = body.transferNo || c.req.header('X-Transfer-No') || '';
   if (!transferNo) {
     return c.json({ success: false, error: 'transferNo is required' }, 400);
   }
