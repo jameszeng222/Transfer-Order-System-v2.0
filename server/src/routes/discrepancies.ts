@@ -145,7 +145,7 @@ discrepancies.put('/:id', zValidator('json', updateDiscrepancySchema), async (c)
     const newValue = value != null ? String(value) : null;
     if (oldValue !== newValue) {
       logEntries.push({
-        record_type: 'transfer_order',
+        record_type: 'discrepancy',
         record_id: id,
         transfer_no: existing.transfer_no,
         field_name: `discrepancy.${key}`,

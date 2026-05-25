@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import bcrypt from 'bcryptjs';
 import { db } from '../db/index.js';
+import { requirePermission } from '../middleware/auth.js';
 
 const users = new Hono();
 
@@ -76,6 +77,10 @@ users.get('/:id', async (c) => {
 });
 
 users.post('/', zValidator('json', createUserSchema), async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const body = c.req.valid('json');
   const { password, ...rest } = body;
   const password_hash = await bcrypt.hash(password, 10);
@@ -88,6 +93,10 @@ users.post('/', zValidator('json', createUserSchema), async (c) => {
 });
 
 users.put('/:id', zValidator('json', updateUserSchema), async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const body = c.req.valid('json');
 
@@ -114,6 +123,10 @@ users.put('/:id', zValidator('json', updateUserSchema), async (c) => {
 });
 
 users.delete('/:id', async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const existing = await db('users').where({ id }).first();
   if (!existing) {

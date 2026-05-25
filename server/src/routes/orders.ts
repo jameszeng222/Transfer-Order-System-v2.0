@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
+import XLSX from 'xlsx';
 
 const STATUS_FLOW: Record<string, string[]> = {
   PENDING_OUTBOUND: ['OUTBOUNDED', 'CANCELLED'],
@@ -55,6 +56,7 @@ orders.get('/', async (c) => {
   const source = c.req.query('source');
   const isLogisticsAbnormal = c.req.query('is_logistics_abnormal');
   const isShelfAbnormal = c.req.query('is_shelf_abnormal');
+  const abnormal = c.req.query('abnormal');
   const sortBy = c.req.query('sortBy') || 'create_time';
   const sortOrder = c.req.query('sortOrder') || 'desc';
 
@@ -86,6 +88,17 @@ orders.get('/', async (c) => {
   }
   if (isShelfAbnormal !== undefined && isShelfAbnormal !== '') {
     query = query.where('is_shelf_abnormal', isShelfAbnormal === 'true' ? 1 : 0);
+  }
+  if (abnormal) {
+    if (abnormal === 'logistics') {
+      query = query.where('is_logistics_abnormal', 1);
+    } else if (abnormal === 'shelf') {
+      query = query.where('is_shelf_abnormal', 1);
+    } else if (abnormal === 'any' || abnormal === 'true') {
+      query = query.where(function() {
+        this.where('is_logistics_abnormal', 1).orWhere('is_shelf_abnormal', 1);
+      });
+    }
   }
 
   const totalResult = await query.clone().count('* as count').first();
@@ -132,6 +145,124 @@ orders.get('/', async (c) => {
     data,
     pagination: { total, page, pageSize },
   });
+});
+
+orders.get('/export', async (c) => {
+  const keyword = c.req.query('keyword') || '';
+  const status = c.req.query('status');
+  const fromWarehouse = c.req.query('from_warehouse');
+  const toWarehouse = c.req.query('to_warehouse');
+  const transportType = c.req.query('transport_type');
+  const source = c.req.query('source');
+  const abnormal = c.req.query('abnormal');
+
+  let query = db('transfer_orders');
+
+  if (keyword) {
+    query = query.where(function () {
+      this.where('transfer_no', 'like', `%${keyword}%`)
+        .orWhere('inbound_order_no', 'like', `%${keyword}%`);
+    });
+  }
+  if (status) {
+    query = query.where('status', status);
+  }
+  if (fromWarehouse) {
+    query = query.where('from_warehouse', fromWarehouse);
+  }
+  if (toWarehouse) {
+    query = query.where('to_warehouse', toWarehouse);
+  }
+  if (transportType) {
+    query = query.where('transport_type', transportType);
+  }
+  if (source) {
+    query = query.where('source', source);
+  }
+  if (abnormal) {
+    if (abnormal === 'logistics') {
+      query = query.where('is_logistics_abnormal', 1);
+    } else if (abnormal === 'shelf') {
+      query = query.where('is_shelf_abnormal', 1);
+    } else if (abnormal === 'any' || abnormal === 'true') {
+      query = query.where(function() {
+        this.where('is_logistics_abnormal', 1).orWhere('is_shelf_abnormal', 1);
+      });
+    }
+  }
+
+  const data = await query
+    .select([
+      'transfer_no',
+      'inbound_order_no',
+      'from_warehouse',
+      'to_warehouse',
+      'transport_type',
+      'status',
+      'total_sku_count',
+      'total_qty',
+      'total_carton_count',
+      'logistics_carrier',
+      'is_logistics_abnormal',
+      'is_shelf_abnormal',
+      'create_time',
+    ])
+    .limit(10000)
+    .orderBy('create_time', 'desc');
+
+  const rows = data.map((row: any) => ({
+    '调拨单号': row.transfer_no,
+    '入库单号': row.inbound_order_no,
+    '来源仓': row.from_warehouse,
+    '目的仓': row.to_warehouse,
+    '运输类型': row.transport_type,
+    '状态': row.status,
+    'SKU数': row.total_sku_count,
+    '总数量': row.total_qty,
+    '箱数': row.total_carton_count,
+    '物流商': row.logistics_carrier,
+    '物流异常': row.is_logistics_abnormal ? '是' : '否',
+    '上架异常': row.is_shelf_abnormal ? '是' : '否',
+    '创建时间': row.create_time,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, '调拨单');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+  return new Response(buf, {
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename=orders_export.xlsx',
+    },
+  });
+});
+
+orders.get('/in-progress', async (c) => {
+  const orders = await db('transfer_orders')
+    .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
+    .select(['transfer_no', 'inbound_order_no', 'status', 'from_warehouse', 'to_warehouse', 'transport_type', 'logistics_carrier', 'logistics_tracking_no', 'total_carton_count', 'total_freight_amount', 'is_reconciled'])
+    .orderBy('create_time', 'desc')
+    .limit(50);
+
+  const cartonData = await db('transfer_cartons')
+    .whereIn('transfer_no', orders.map(o => o.transfer_no))
+    .whereNotNull('carton_weight')
+    .select(['transfer_no']);
+
+  const cartonsWithWeight = new Set(cartonData.map((c: any) => c.transfer_no));
+
+  const result = orders.map((o: any) => ({
+    ...o,
+    has_basic_info: !!(o.from_warehouse && o.to_warehouse && o.transport_type && o.total_carton_count > 0),
+    has_logistics_info: !!(o.logistics_carrier && o.logistics_tracking_no),
+    has_carton_specs: cartonsWithWeight.has(o.transfer_no),
+    has_outbound: o.status !== 'PENDING_OUTBOUND',
+    has_freight: !!(o.total_freight_amount > 0 || o.is_reconciled),
+  }));
+
+  return c.json({ success: true, data: result });
 });
 
 orders.get('/:transferNo', async (c) => {

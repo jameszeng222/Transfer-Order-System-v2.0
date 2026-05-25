@@ -52,6 +52,18 @@ const LOGISTICS_EVENT_COLUMN_MAP: Record<string, string> = {
   '位置': 'location',
 };
 
+const FREIGHT_COLUMN_MAP: Record<string, string> = {
+  '第三方入库单号': 'inbound_order_no',
+  '物流商': 'logistics_carrier',
+  '运费': 'freight_fee',
+  '报关费': 'customs_fee',
+  '其他费用': 'other_fee',
+  '币种': 'currency',
+  '汇率': 'exchange_rate',
+  '账单日期': 'bill_date',
+  '备注': 'remark',
+};
+
 const COLUMN_MAP: Record<string, string> = {
   '第三方入库单号': 'inbound_order_no',
   'ERP单号': 'erp_order_no',
@@ -247,10 +259,6 @@ async function processOrderGroup(
     .first();
 
   if (existingOrder) {
-    await trx('transfer_carton_items').where({ inbound_order_no: inboundOrderNo }).del();
-    await trx('transfer_cartons').where({ inbound_order_no: inboundOrderNo }).del();
-    await trx('transfer_order_items').where({ inbound_order_no: inboundOrderNo }).del();
-
     const orderData: Record<string, any> = { update_time: new Date().toISOString() };
     for (const field of ORDER_LEVEL_FIELDS) {
       if (firstRow[field] !== undefined && firstRow[field] !== null && firstRow[field] !== '') {
@@ -259,7 +267,7 @@ async function processOrderGroup(
     }
     await trx('transfer_orders').where({ id: existingOrder.id }).update(orderData);
 
-    await createSubRecords(trx, existingOrder.transfer_no, inboundOrderNo, rows);
+    await mergeSubRecords(trx, existingOrder.transfer_no, inboundOrderNo, rows);
 
     await trx('change_logs').insert({
       record_type: 'transfer_order',
@@ -395,6 +403,114 @@ async function createSubRecords(
       update_time: new Date().toISOString(),
     });
   }
+}
+
+async function mergeSubRecords(
+  trx: any,
+  transferNo: string,
+  inboundOrderNo: string,
+  rows: ParsedRow[],
+): Promise<void> {
+  const cartonGroups: Record<string, ParsedRow[]> = {};
+  for (const row of rows) {
+    const key = row.carton_no;
+    if (!cartonGroups[key]) cartonGroups[key] = [];
+    cartonGroups[key].push(row);
+  }
+
+  for (const [cartonNo, cartonRows] of Object.entries(cartonGroups)) {
+    const firstCartonRow = cartonRows[0];
+    const existingCarton = await trx('transfer_cartons')
+      .where({ transfer_no: transferNo, carton_no: cartonNo })
+      .first();
+
+    if (existingCarton) {
+      const cartonUpdates: Record<string, any> = { update_time: new Date().toISOString() };
+      if (firstCartonRow.logistics_tracking_no !== undefined && firstCartonRow.logistics_tracking_no !== null && firstCartonRow.logistics_tracking_no !== '') {
+        cartonUpdates.logistics_tracking_no = firstCartonRow.logistics_tracking_no;
+      }
+      if (Object.keys(cartonUpdates).length > 1) {
+        await trx('transfer_cartons').where({ id: existingCarton.id }).update(cartonUpdates);
+      }
+    } else {
+      await trx('transfer_cartons').insert({
+        transfer_no: transferNo,
+        inbound_order_no: inboundOrderNo,
+        carton_no: cartonNo,
+        logistics_tracking_no: firstCartonRow.logistics_tracking_no || null,
+        create_time: new Date().toISOString(),
+        update_time: new Date().toISOString(),
+      });
+    }
+
+    await trx('transfer_carton_items')
+      .where({ transfer_no: transferNo, carton_no: cartonNo })
+      .del();
+
+    for (const row of cartonRows) {
+      await trx('transfer_carton_items').insert({
+        carton_no: cartonNo,
+        transfer_no: transferNo,
+        inbound_order_no: inboundOrderNo,
+        sku_code: row.sku_code,
+        sku_name: row.sku_name || null,
+        overseas_sku_code: row.overseas_sku_code || null,
+        product_name: row.product_name || null,
+        qty: Number(row.expected_qty) || 0,
+      });
+    }
+  }
+
+  const skuGroups: Record<string, ParsedRow[]> = {};
+  for (const row of rows) {
+    const key = row.sku_code;
+    if (!skuGroups[key]) skuGroups[key] = [];
+    skuGroups[key].push(row);
+  }
+
+  for (const [skuCode, skuRows] of Object.entries(skuGroups)) {
+    const totalExpectedQty = skuRows.reduce((sum, r) => sum + (Number(r.expected_qty) || 0), 0);
+    const firstSkuRow = skuRows[0];
+    const existingItem = await trx('transfer_order_items')
+      .where({ transfer_no: transferNo, sku_code: skuCode })
+      .first();
+
+    if (existingItem) {
+      const itemUpdates: Record<string, any> = {};
+      if (firstSkuRow.sku_name !== undefined && firstSkuRow.sku_name !== null && firstSkuRow.sku_name !== '') {
+        itemUpdates.sku_name = firstSkuRow.sku_name;
+      }
+      if (totalExpectedQty > 0) {
+        itemUpdates.expected_qty = totalExpectedQty;
+      }
+      if (Object.keys(itemUpdates).length > 0) {
+        await trx('transfer_order_items').where({ id: existingItem.id }).update(itemUpdates);
+      }
+    } else {
+      await trx('transfer_order_items').insert({
+        transfer_no: transferNo,
+        inbound_order_no: inboundOrderNo,
+        sku_code: skuCode,
+        sku_name: firstSkuRow.sku_name || null,
+        expected_qty: totalExpectedQty,
+        outbound_qty: 0,
+        inbound_qty: 0,
+        shelf_qty: 0,
+      });
+    }
+  }
+
+  const allCartons = await trx('transfer_cartons').where({ transfer_no: transferNo });
+  const allItems = await trx('transfer_order_items').where({ transfer_no: transferNo });
+  const totalQty = allItems.reduce((sum: number, item: any) => sum + (Number(item.expected_qty) || 0), 0);
+  const skuSet = new Set(allItems.map((i: any) => i.sku_code));
+
+  await trx('transfer_orders').where({ transfer_no: transferNo }).update({
+    total_sku_count: skuSet.size,
+    total_qty: totalQty,
+    total_carton_count: allCartons.length,
+    update_time: new Date().toISOString(),
+  });
 }
 
 export async function importExcel(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
@@ -939,28 +1055,177 @@ export async function importLogisticsEvents(buffer: ArrayBuffer, operator: strin
   };
 }
 
+export async function processFreightImport(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
+  const { headers, rows } = parseExcel(buffer);
+  if (headers.length === 0 || rows.length === 0) {
+    return { total: 0, success: 0, failed: 0, errors: [{ row: 0, message: 'Excel文件为空或无有效数据' }], createdOrders: 0, updatedOrders: 0 };
+  }
+
+  const parsedRows = mapRowsWithColumnMap(headers, rows, FREIGHT_COLUMN_MAP);
+  const errors: RowError[] = [];
+  const validRows: ParsedRow[] = [];
+
+  for (const row of parsedRows) {
+    if (!row.inbound_order_no) {
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号' });
+    } else {
+      validRows.push(row);
+    }
+  }
+
+  let createdBills = 0;
+  let updatedBills = 0;
+  const orderErrors: RowError[] = [];
+
+  await db.transaction(async (trx) => {
+    for (const row of validRows) {
+      try {
+        const order = await trx('transfer_orders')
+          .where({ inbound_order_no: String(row.inbound_order_no) })
+          .first();
+        if (!order) {
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 未找到对应调拨单` });
+          continue;
+        }
+
+        const existingBill = await trx('freight_bills')
+          .where({ transfer_no: order.transfer_no, bill_status: 'PENDING' })
+          .first();
+
+        const freightFee = row.freight_fee !== undefined && row.freight_fee !== null && row.freight_fee !== '' ? Number(row.freight_fee) : undefined;
+        const customsFee = row.customs_fee !== undefined && row.customs_fee !== null && row.customs_fee !== '' ? Number(row.customs_fee) : undefined;
+        const otherFee = row.other_fee !== undefined && row.other_fee !== null && row.other_fee !== '' ? Number(row.other_fee) : undefined;
+        const currency = row.currency !== undefined && row.currency !== null && row.currency !== '' ? String(row.currency) : undefined;
+        const exchangeRate = row.exchange_rate !== undefined && row.exchange_rate !== null && row.exchange_rate !== '' ? Number(row.exchange_rate) : undefined;
+
+        if (existingBill) {
+          const updates: Record<string, any> = { update_time: new Date().toISOString() };
+          if (freightFee !== undefined && !isNaN(freightFee)) updates.freight_fee = freightFee;
+          if (customsFee !== undefined && !isNaN(customsFee)) updates.customs_fee = customsFee;
+          if (otherFee !== undefined && !isNaN(otherFee)) updates.other_fee = otherFee;
+          if (currency !== undefined) updates.currency = currency;
+          if (exchangeRate !== undefined && !isNaN(exchangeRate)) updates.exchange_rate = exchangeRate;
+
+          const fFee = updates.freight_fee !== undefined ? Number(updates.freight_fee) : Number(existingBill.freight_fee || 0);
+          const cFee = updates.customs_fee !== undefined ? Number(updates.customs_fee) : Number(existingBill.customs_fee || 0);
+          const oFee = updates.other_fee !== undefined ? Number(updates.other_fee) : Number(existingBill.other_fee || 0);
+          const eRate = updates.exchange_rate !== undefined ? Number(updates.exchange_rate) : Number(existingBill.exchange_rate || 1);
+
+          updates.total_amount = Math.round((fFee + cFee + oFee) * 100) / 100;
+          updates.total_amount_cny = Math.round(updates.total_amount * eRate * 100) / 100;
+
+          await trx('freight_bills').where({ id: existingBill.id }).update(updates);
+
+          await trx('change_logs').insert({
+            record_type: 'transfer_order',
+            record_id: order.id,
+            transfer_no: order.transfer_no,
+            field_name: 'IMPORT_FREIGHT',
+            old_value: '',
+            new_value: `updated bill ${existingBill.bill_no}`,
+            change_source: 'IMPORT',
+            operator,
+            reason: '运费账单导入更新',
+          });
+
+          updatedBills++;
+        } else {
+          const fFee = freightFee !== undefined && !isNaN(freightFee) ? freightFee : 0;
+          const cFee = customsFee !== undefined && !isNaN(customsFee) ? customsFee : 0;
+          const oFee = otherFee !== undefined && !isNaN(otherFee) ? otherFee : 0;
+          const eRate = exchangeRate !== undefined && !isNaN(exchangeRate) ? exchangeRate : 1;
+          const totalAmount = Math.round((fFee + cFee + oFee) * 100) / 100;
+          const totalAmountCny = Math.round(totalAmount * eRate * 100) / 100;
+
+          const today = new Date();
+          const dateStr = today.getFullYear().toString() +
+            String(today.getMonth() + 1).padStart(2, '0') +
+            String(today.getDate()).padStart(2, '0');
+          const prefix = `FB-${dateStr}-`;
+          const lastBill = await trx('freight_bills')
+            .where('bill_no', 'like', `${prefix}%`)
+            .orderBy('bill_no', 'desc')
+            .first();
+          let seq = 1;
+          if (lastBill) {
+            const lastSeq = parseInt(lastBill.bill_no.substring(prefix.length), 10);
+            if (!isNaN(lastSeq)) seq = lastSeq + 1;
+          }
+          const billNo = `${prefix}${String(seq).padStart(4, '0')}`;
+
+          const now = new Date().toISOString();
+          await trx('freight_bills').insert({
+            bill_no: billNo,
+            transfer_no: order.transfer_no,
+            freight_fee: fFee,
+            customs_fee: cFee,
+            other_fee: oFee,
+            total_amount: totalAmount,
+            currency: currency || 'CNY',
+            exchange_rate: eRate,
+            total_amount_cny: totalAmountCny,
+            bill_status: 'PENDING',
+            create_time: now,
+            update_time: now,
+          });
+
+          await trx('change_logs').insert({
+            record_type: 'transfer_order',
+            record_id: order.id,
+            transfer_no: order.transfer_no,
+            field_name: 'IMPORT_FREIGHT',
+            old_value: '',
+            new_value: `created bill ${billNo}`,
+            change_source: 'IMPORT',
+            operator,
+            reason: '运费账单导入创建',
+          });
+
+          createdBills++;
+        }
+      } catch (err: any) {
+        orderErrors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 运费导入失败: ${err.message}` });
+      }
+    }
+  });
+
+  const allErrors = [...errors, ...orderErrors];
+  const successCount = validRows.length - orderErrors.length;
+
+  return {
+    total: parsedRows.length,
+    success: successCount,
+    failed: allErrors.length,
+    errors: allErrors,
+    createdOrders: createdBills,
+    updatedOrders: updatedBills,
+  };
+}
+
 export function generateTemplate(type: string): ArrayBuffer {
   const headersByType: Record<string, string[]> = {
     main: [
-      '第三方入库单号', 'ERP单号', '出库单号', '来源仓', '目的仓', '业务团队',
-      '数据来源', '调拨类型', '运输类型', '箱号', '物流跟踪号', '物流商',
-      'SKU编码', 'SKU名称', '应调拨数量', '海外仓SKU', '品名',
-      '是否报关', '报关工厂', '是否查验', '时效要求(天)', '订单备注',
-      '尾程类型', '尾程渠道', '预估单价', '运费币种', '运费分摊方式', '备注',
+      '第三方入库单号', 'ERP订单号', '出库单号', '发货仓', '目的仓', '团队',
+      '来源', '调拨类型', '运输类型', '箱号', '物流跟踪号', '物流商',
+      'SKU代码', 'SKU名称', '海外仓SKU', '品名', '应调拨数量',
+      '是否报关', '报关工厂', '是否查验', '时效要求天数', '订单备注',
+      '末程类型', '末程渠道', '预估单价', '运费币种', '运费分摊方式', '备注',
     ],
     outbound: [
-      '第三方入库单号', 'SKU编码', '实际出库数量', '出库时间', '出库单号',
+      '第三方入库单号', '箱号', 'SKU代码', '实际出库数量', '出库差异', '差异原因',
     ],
     logistics: [
-      '第三方入库单号', '物流商', '物流单号', '提货时间', '离港时间',
-      '到港时间', '清关时间', '尾程提取时间', '签收时间',
-      '是否报关', '报关工厂', '是否查验', '尾程类型', '尾程渠道',
+      '第三方入库单号', '物流商', '物流跟踪号', '提货时间',
+      '是否报关', '报关工厂', '是否查验', '物流异常', '物流异常类型', '物流异常备注', '延迟说明',
     ],
     inbound: [
-      '第三方入库单号', 'SKU编码', '实际入库数量', '入库时间',
+      '第三方入库单号', '箱号', 'SKU代码', '签收数量', '上架数量', '上架差异', '上架异常', '上架异常类型', '上架异常备注',
     ],
     'logistics-events': [
-      '第三方入库单号', '事件时间', '事件类型', '事件描述', '位置',
+      '第三方入库单号', '事件时间', '事件类型', '事件描述', '位置', '操作人',
+    ],
+    freight: [
+      '第三方入库单号', '物流商', '运费', '报关费', '其他费用', '币种', '汇率', '账单日期', '备注',
     ],
   };
 

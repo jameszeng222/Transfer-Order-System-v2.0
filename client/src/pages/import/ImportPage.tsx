@@ -17,11 +17,11 @@ interface ImportCardConfig {
 
 const IMPORT_CARDS: ImportCardConfig[] = [
   { key: 'main', label: '调拨单导入', badge: '主导入', badgeVariant: 'pending', description: '箱×SKU粒度，一次性导入全部基础信息', endpoint: '/imports/upload' },
+  { key: 'outbound', label: '出库回传', description: '出库数量回传确认', endpoint: '/imports/outbound' },
+  { key: 'logistics', label: '物流信息', description: '物流节点/异常/报关信息', endpoint: '/imports/logistics' },
+  { key: 'inbound', label: '入库回传', description: '签收/上架数量回传', endpoint: '/imports/inbound' },
   { key: 'logistics-events', label: '物流时间节点', description: '周一/三/五批量导入', endpoint: '/imports/logistics-events' },
-  { key: 'outbound', label: '运费账单', description: '确认后自动分摊到SKU', endpoint: '/imports/outbound' },
-  { key: 'inbound', label: '预估单价', description: '自动计算预估运费', endpoint: '/imports/inbound' },
-  { key: 'logistics', label: '异常备注', description: '物流异常/上架异常核实备注', endpoint: '/imports/logistics' },
-  { key: 'reconcile', label: '运费对账', description: '确认对账和付款状态', endpoint: '/imports/reconcile' },
+  { key: 'reconcile', label: '运费账单导入', description: '运费确认后自动分摊到SKU', endpoint: '/imports/freight' },
 ];
 
 export default function ImportPage() {

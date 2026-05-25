@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
+import { requirePermission } from '../middleware/auth.js';
 
 const teams = new Hono();
 
@@ -59,12 +60,20 @@ teams.get('/:id', async (c) => {
 });
 
 teams.post('/', zValidator('json', createTeamSchema), async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const body = c.req.valid('json');
   const [inserted] = await db('teams').insert(body).returning('*');
   return c.json({ success: true, data: inserted }, 201);
 });
 
 teams.put('/:id', zValidator('json', updateTeamSchema), async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const body = c.req.valid('json');
 
@@ -83,6 +92,10 @@ teams.put('/:id', zValidator('json', updateTeamSchema), async (c) => {
 });
 
 teams.delete('/:id', async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const existing = await db('teams').where({ id }).first();
   if (!existing) {

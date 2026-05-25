@@ -131,7 +131,7 @@ async function allocateFreight(transferNo: string, user?: { username: string }) 
   });
 
   await db('change_logs').insert({
-    record_type: 'transfer_order',
+    record_type: 'freight_bill',
     record_id: order.id,
     transfer_no: transferNo,
     field_name: 'freight_allocated',
@@ -236,7 +236,7 @@ freight.put('/batch-reconcile', zValidator('json', batchReconcileSchema), async 
     });
 
   const logEntries = confirmableBills.map((b: any) => ({
-    record_type: 'transfer_order',
+    record_type: 'freight_bill',
     record_id: b.id,
     transfer_no: b.transfer_no,
     field_name: 'freight_bill.status',
@@ -315,7 +315,7 @@ freight.post('/', zValidator('json', createFreightBillSchema), async (c) => {
     .returning('*');
 
   await db('change_logs').insert({
-    record_type: 'transfer_order',
+    record_type: 'freight_bill',
     record_id: order.id,
     transfer_no: body.transfer_no,
     field_name: 'freight_bill_created',
@@ -366,7 +366,7 @@ freight.put('/:id', zValidator('json', updateFreightBillSchema), async (c) => {
     const newValue = value != null ? String(value) : null;
     if (oldValue !== newValue) {
       logEntries.push({
-        record_type: 'transfer_order',
+        record_type: 'freight_bill',
         record_id: existing.id,
         transfer_no: existing.transfer_no,
         field_name: `freight_bill.${key}`,
@@ -421,7 +421,7 @@ freight.put('/:id/confirm', async (c) => {
   });
 
   await db('change_logs').insert({
-    record_type: 'transfer_order',
+    record_type: 'freight_bill',
     record_id: existing.id,
     transfer_no: existing.transfer_no,
     field_name: 'freight_bill.status',
@@ -484,7 +484,7 @@ freight.put('/:id/reconcile', async (c) => {
 
   await db('change_logs').insert([
     {
-      record_type: 'transfer_order',
+      record_type: 'freight_bill',
       record_id: existing.id,
       transfer_no: existing.transfer_no,
       field_name: 'freight_bill.status',
@@ -495,7 +495,7 @@ freight.put('/:id/reconcile', async (c) => {
       change_time: now,
     },
     {
-      record_type: 'transfer_order',
+      record_type: 'freight_bill',
       record_id: existing.id,
       transfer_no: existing.transfer_no,
       field_name: 'transfer_order.is_reconciled',

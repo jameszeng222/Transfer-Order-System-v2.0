@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
+import { requirePermission } from '../middleware/auth.js';
 
 const sla = new Hono();
 
@@ -55,8 +56,11 @@ sla.get('/:id', async (c) => {
 });
 
 sla.post('/', zValidator('json', createSlaSchema), async (c) => {
-  const body = c.req.valid('json');
   const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
+  const body = c.req.valid('json');
 
   const warehouse = await db('warehouses').where({ id: body.dest_warehouse_id }).first();
   if (!warehouse) {
@@ -98,9 +102,12 @@ sla.post('/', zValidator('json', createSlaSchema), async (c) => {
 });
 
 sla.put('/:id', zValidator('json', updateSlaSchema), async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const body = c.req.valid('json');
-  const user = c.get('user');
 
   const existing = await db('sla_rules').where({ id }).first();
   if (!existing) {
@@ -168,8 +175,11 @@ sla.put('/:id', zValidator('json', updateSlaSchema), async (c) => {
 });
 
 sla.delete('/:id', async (c) => {
-  const id = Number(c.req.param('id'));
   const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
+  const id = Number(c.req.param('id'));
 
   const existing = await db('sla_rules').where({ id }).first();
   if (!existing) {

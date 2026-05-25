@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
+import { requirePermission } from '../middleware/auth.js';
 
 const carriers = new Hono();
 
@@ -69,12 +70,20 @@ carriers.get('/:id', async (c) => {
 });
 
 carriers.post('/', zValidator('json', createCarrierSchema), async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const body = c.req.valid('json');
   const [inserted] = await db('carriers').insert(body).returning('*');
   return c.json({ success: true, data: inserted }, 201);
 });
 
 carriers.put('/:id', zValidator('json', updateCarrierSchema), async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const body = c.req.valid('json');
 
@@ -93,6 +102,10 @@ carriers.put('/:id', zValidator('json', updateCarrierSchema), async (c) => {
 });
 
 carriers.delete('/:id', async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const existing = await db('carriers').where({ id }).first();
   if (!existing) {

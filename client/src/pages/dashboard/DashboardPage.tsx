@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
-import { TransportTypeLabel } from 'shared/constants';
-import type { TransportType } from 'shared/constants';
+import { TransportTypeLabel, TransferStatusLabel } from 'shared/constants';
+import type { TransportType, TransferStatus } from 'shared/constants';
 import { StatCard, Card, Badge } from '../../components/ui';
 
 interface DashboardData {
@@ -13,6 +13,35 @@ interface DashboardData {
   transportDistribution: { transport_type: string; count: number }[];
   recentTrend: { date: string; count: number }[];
 }
+
+interface InProgressOrder {
+  transfer_no: string;
+  inbound_order_no: string;
+  status: TransferStatus;
+  from_warehouse: string;
+  to_warehouse: string;
+  transport_type: string;
+  logistics_carrier: string;
+  logistics_tracking_no: string;
+  total_carton_count: number;
+  total_freight_amount: number;
+  is_reconciled: number;
+  has_basic_info: boolean;
+  has_logistics_info: boolean;
+  has_carton_specs: boolean;
+  has_outbound: boolean;
+  has_freight: boolean;
+}
+
+const STATUS_BADGE_MAP: Record<string, 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'complete'> = {
+  PENDING_OUTBOUND: 'pending',
+  OUTBOUNDED: 'shipped',
+  IN_TRANSIT: 'transit',
+  RECEIVED: 'received',
+  SHELVED: 'shelved',
+  COMPLETED: 'complete',
+  CANCELLED: 'abnormal',
+};
 
 const statusSegments = [
   { label: '待出库', count: 12, color: '#6b7280', pct: 9 },
@@ -56,11 +85,20 @@ const sourceItems = [
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [inProgressOrders, setInProgressOrders] = useState<InProgressOrder[]>([]);
 
   useEffect(() => {
     api.get<{ success: boolean; data: DashboardData }>('/tracking/dashboard')
       .then((res) => {
         if (res.success) setData(res.data);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.get<{ success: boolean; data: InProgressOrder[] }>('/orders/in-progress')
+      .then((res) => {
+        if (res.success) setInProgressOrders(res.data);
       })
       .catch(() => {});
   }, []);
@@ -196,6 +234,54 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      <Card title="进行中调拨单">
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12.5px]">
+            <thead>
+              <tr>
+                <th className="px-4 py-2.5 text-left font-medium text-text-tertiary text-[11px] uppercase tracking-wide border-b border-border-light bg-bg">入库单号</th>
+                <th className="px-4 py-2.5 text-left font-medium text-text-tertiary text-[11px] uppercase tracking-wide border-b border-border-light bg-bg">状态</th>
+                <th className="px-4 py-2.5 text-center font-medium text-text-tertiary text-[11px] uppercase tracking-wide border-b border-border-light bg-bg">基础信息</th>
+                <th className="px-4 py-2.5 text-center font-medium text-text-tertiary text-[11px] uppercase tracking-wide border-b border-border-light bg-bg">物流信息</th>
+                <th className="px-4 py-2.5 text-center font-medium text-text-tertiary text-[11px] uppercase tracking-wide border-b border-border-light bg-bg">箱规</th>
+                <th className="px-4 py-2.5 text-center font-medium text-text-tertiary text-[11px] uppercase tracking-wide border-b border-border-light bg-bg">出库回传</th>
+                <th className="px-4 py-2.5 text-center font-medium text-text-tertiary text-[11px] uppercase tracking-wide border-b border-border-light bg-bg">运费</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inProgressOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-12 text-text-tertiary text-[13px]">暂无进行中的调拨单</td>
+                </tr>
+              ) : (
+                inProgressOrders.map((order) => (
+                  <tr key={order.transfer_no} className="hover:bg-bg-hover border-b border-border-light last:border-b-0">
+                    <td className="px-4 py-2.5">
+                      <span
+                        className="text-accent cursor-pointer hover:underline font-medium"
+                        onClick={() => navigate(`/orders/${order.transfer_no}`)}
+                      >
+                        {order.inbound_order_no}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <Badge variant={STATUS_BADGE_MAP[order.status] || 'pending'}>
+                        {TransferStatusLabel[order.status] || order.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-center">{order.has_basic_info ? <span className="text-green">✓</span> : <span className="text-red">✗</span>}</td>
+                    <td className="px-4 py-2.5 text-center">{order.has_logistics_info ? <span className="text-green">✓</span> : <span className="text-red">✗</span>}</td>
+                    <td className="px-4 py-2.5 text-center">{order.has_carton_specs ? <span className="text-green">✓</span> : <span className="text-red">✗</span>}</td>
+                    <td className="px-4 py-2.5 text-center">{order.has_outbound ? <span className="text-green">✓</span> : <span className="text-red">✗</span>}</td>
+                    <td className="px-4 py-2.5 text-center">{order.has_freight ? <span className="text-green">✓</span> : <span className="text-red">✗</span>}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

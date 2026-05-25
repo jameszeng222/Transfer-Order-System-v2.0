@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
+import { requirePermission } from '../middleware/auth.js';
 
 const warehouses = new Hono();
 
@@ -73,12 +74,20 @@ warehouses.get('/:id', async (c) => {
 });
 
 warehouses.post('/', zValidator('json', createWarehouseSchema), async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const body = c.req.valid('json');
   const [inserted] = await db('warehouses').insert(body).returning('*');
   return c.json({ success: true, data: inserted }, 201);
 });
 
 warehouses.put('/:id', zValidator('json', updateWarehouseSchema), async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const body = c.req.valid('json');
 
@@ -97,6 +106,10 @@ warehouses.put('/:id', zValidator('json', updateWarehouseSchema), async (c) => {
 });
 
 warehouses.delete('/:id', async (c) => {
+  const user = c.get('user');
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: 'Permission denied' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const existing = await db('warehouses').where({ id }).first();
   if (!existing) {
