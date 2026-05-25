@@ -29,8 +29,11 @@ export async function authMiddleware(c: Context, next: Next) {
     const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
     c.set('user', payload);
     await next();
-  } catch {
-    return c.json({ success: false, error: 'Unauthorized: invalid token' }, 401);
+  } catch (err) {
+    if (err instanceof jwt.JsonWebTokenError) {
+      return c.json({ success: false, error: 'Unauthorized: invalid token' }, 401);
+    }
+    throw err;
   }
 }
 
