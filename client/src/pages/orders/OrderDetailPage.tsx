@@ -82,7 +82,7 @@ export default function OrderDetailPage() {
     if (!tn) { setLoading(false); return; }
     setLoading(true);
     setErrorMsg('');
-    api.post<{ success: boolean; data: OrderDetail }>(`/query/order`, { transferNo: tn })
+    api.post<{ success: boolean; data: OrderDetail }>(`/query/order`, { tn })
       .then((res) => { if (res.success) setOrder(res.data); else { setOrder(null); setErrorMsg('数据返回异常'); } })
       .catch((err) => { setOrder(null); setErrorMsg(err.message || '请求失败'); })
       .finally(() => { setLoading(false); });
