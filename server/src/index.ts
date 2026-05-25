@@ -54,6 +54,15 @@ async function bootstrap() {
       directory: path.resolve(serverDir, 'seeds'),
       extension: 'ts',
     });
+  } else {
+    const hasItems = await db('transfer_order_items').count('* as count').first();
+    if (Number(hasItems?.count) === 0) {
+      console.log('Users exist but no order items found, re-running seed for data integrity...');
+      await db.seed.run({
+        directory: path.resolve(serverDir, 'seeds'),
+        extension: 'ts',
+      });
+    }
   }
 
   serve(
