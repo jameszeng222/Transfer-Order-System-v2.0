@@ -286,7 +286,7 @@ const detailQuerySchema = z.object({
   transferNo: z.string().min(1),
 });
 
-orders.post('/fetch', async (c) => {
+orders.post('/xquery', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const transferNo = body.transferNo;
 
