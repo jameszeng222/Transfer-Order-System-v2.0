@@ -20,11 +20,9 @@ interface ImportCardConfig {
 }
 
 const IMPORT_CARDS: ImportCardConfig[] = [
-  { key: 'main', label: '调拨单导入', badge: '主导入', badgeVariant: 'pending', description: '箱×SKU粒度，一次性导入全部基础信息', endpoint: '/imports/upload', templateType: 'main' },
-  { key: 'outbound', label: '出库回传', description: '出库数量回传确认', endpoint: '/imports/outbound', templateType: 'outbound' },
-  { key: 'logistics', label: '物流信息', description: '物流节点/异常/报关信息', endpoint: '/imports/logistics', templateType: 'logistics' },
+  { key: 'main', label: '调拨单导入', badge: '主导入', badgeVariant: 'pending', description: '箱×SKU粒度，含创建时间和出库时间', endpoint: '/imports/upload', templateType: 'main' },
+  { key: 'logistics', label: '物流信息导入', description: '物流节点+异常+报关+时间节点，合并导入', endpoint: '/imports/logistics', templateType: 'logistics' },
   { key: 'inbound', label: '入库回传', description: '签收/上架数量回传', endpoint: '/imports/inbound', templateType: 'inbound' },
-  { key: 'logistics-events', label: '物流时间节点', description: '周一/三/五批量导入', endpoint: '/imports/logistics-events', templateType: 'logistics-events' },
   { key: 'reconcile', label: '运费账单导入', description: '运费确认后自动分摊到SKU', endpoint: '/imports/freight', templateType: 'freight' },
 ];
 
@@ -110,7 +108,7 @@ export default function ImportPage() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {IMPORT_CARDS.map((config) => (
           <Card key={config.key}>
             <div className="p-5">

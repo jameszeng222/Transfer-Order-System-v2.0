@@ -52,6 +52,29 @@ const LOGISTICS_EVENT_COLUMN_MAP: Record<string, string> = {
   '位置': 'location',
 };
 
+const LOGISTICS_MERGED_COLUMN_MAP: Record<string, string> = {
+  '第三方入库单号': 'inbound_order_no',
+  '物流商': 'logistics_carrier',
+  '物流单号': 'logistics_tracking_no',
+  '收件时间': 'pickup_time',
+  '离港时间': 'depart_time',
+  '到港时间': 'arrive_port_time',
+  '清关时间': 'clearance_time',
+  '尾程提取时间': 'last_mile_pickup_time',
+  '签收时间': 'delivery_time',
+  '卸货时间': 'unload_time',
+  '上架时间': 'shelve_time',
+  '是否报关': 'is_customs_declared',
+  '报关工厂': 'customs_factory',
+  '是否查验': 'is_inspected',
+  '尾程类型': 'last_mile_type',
+  '尾程渠道': 'last_mile_channel',
+  '事件时间': 'event_time',
+  '事件类型': 'event_type',
+  '事件描述': 'event_desc',
+  '位置': 'location',
+};
+
 const FREIGHT_COLUMN_MAP: Record<string, string> = {
   '第三方入库单号': 'inbound_order_no',
   '物流商': 'logistics_carrier',
@@ -93,6 +116,8 @@ const COLUMN_MAP: Record<string, string> = {
   '运费币种': 'freight_currency',
   '运费分摊方式': 'freight_allocation_method',
   '备注': 'remark',
+  '创建时间': 'create_time',
+  '出库时间': 'depart_time',
 };
 
 const TRANSPORT_TYPE_MAP: Record<string, string> = {
@@ -132,6 +157,7 @@ const ORDER_LEVEL_FIELDS = [
   'timeline_requirement_days', 'order_remark',
   'last_mile_type', 'last_mile_channel',
   'estimated_unit_price', 'freight_currency', 'freight_allocation_method', 'remark',
+  'create_time', 'depart_time',
 ];
 
 interface RowError {
@@ -182,6 +208,9 @@ function mapChineseValue(field: string, value: any): any {
     const num = Number(value);
     if (isNaN(num)) return undefined;
     return num;
+  }
+  if (field === 'create_time' || field === 'depart_time') {
+    return parseExcelDate(value);
   }
   return value;
 }
@@ -292,13 +321,17 @@ async function processOrderGroup(
       total_sku_count: 0,
       total_qty: 0,
       total_carton_count: 0,
-      create_time: new Date().toISOString(),
+      create_time: firstRow.create_time || new Date().toISOString(),
       update_time: new Date().toISOString(),
     };
     for (const field of ORDER_LEVEL_FIELDS) {
+      if (field === 'create_time' || field === 'depart_time') continue;
       if (firstRow[field] !== undefined && firstRow[field] !== null && firstRow[field] !== '') {
         orderData[field] = firstRow[field];
       }
+    }
+    if (firstRow.depart_time !== undefined && firstRow.depart_time !== null && firstRow.depart_time !== '') {
+      orderData.depart_time = firstRow.depart_time;
     }
     const [inserted] = await trx('transfer_orders').insert(orderData).returning('*');
 
@@ -1055,6 +1088,131 @@ export async function importLogisticsEvents(buffer: ArrayBuffer, operator: strin
   };
 }
 
+export async function importLogisticsMerged(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
+  const { headers, rows } = parseExcel(buffer);
+  if (headers.length === 0 || rows.length === 0) {
+    return { total: 0, success: 0, failed: 0, errors: [{ row: 0, message: 'Excel文件为空或无有效数据' }], createdOrders: 0, updatedOrders: 0 };
+  }
+
+  const parsedRows = mapRowsWithColumnMap(headers, rows, LOGISTICS_MERGED_COLUMN_MAP);
+  const errors: RowError[] = [];
+  const validRows: ParsedRow[] = [];
+
+  for (const row of parsedRows) {
+    if (!row.inbound_order_no) {
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号' });
+    } else {
+      validRows.push(row);
+    }
+  }
+
+  const orderGroups: Record<string, ParsedRow[]> = {};
+  for (const row of validRows) {
+    const key = String(row.inbound_order_no);
+    if (!orderGroups[key]) orderGroups[key] = [];
+    orderGroups[key].push(row);
+  }
+
+  let updatedOrders = 0;
+  const orderErrors: RowError[] = [];
+
+  const LOGISTICS_FIELDS = [
+    'logistics_carrier', 'logistics_tracking_no',
+    'pickup_time', 'depart_time', 'arrive_port_time', 'clearance_time',
+    'last_mile_pickup_time', 'delivery_time', 'unload_time', 'shelve_time',
+    'is_customs_declared', 'customs_factory', 'is_inspected',
+    'last_mile_type', 'last_mile_channel',
+  ];
+
+  await db.transaction(async (trx) => {
+    for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
+      try {
+        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        if (!order) {
+          for (const row of groupRows) {
+            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
+          }
+          continue;
+        }
+
+        const firstRow = groupRows[0];
+        const orderUpdates: Record<string, any> = { update_time: new Date().toISOString() };
+
+        for (const field of LOGISTICS_FIELDS) {
+          if (firstRow[field] !== undefined && firstRow[field] !== null && firstRow[field] !== '') {
+            if (field === 'is_customs_declared' || field === 'is_inspected') {
+              orderUpdates[field] = BOOLEAN_MAP[String(firstRow[field])] ?? firstRow[field];
+            } else if (field.endsWith('_time')) {
+              const parsed = parseExcelDate(firstRow[field]);
+              if (parsed) orderUpdates[field] = parsed;
+            } else {
+              orderUpdates[field] = firstRow[field];
+            }
+          }
+        }
+
+        if (order.status === 'OUTBOUNDED' && orderUpdates.pickup_time) {
+          orderUpdates.status = 'IN_TRANSIT';
+        }
+        if (order.status === 'IN_TRANSIT' && orderUpdates.delivery_time) {
+          orderUpdates.status = 'RECEIVED';
+        }
+
+        await trx('transfer_orders').where({ id: order.id }).update(orderUpdates);
+
+        for (const row of groupRows) {
+          if (row.event_time && row.event_type) {
+            let eventType = row.event_type;
+            if (typeof eventType === 'string' && LOGISTICS_EVENT_TYPE_MAP[eventType]) {
+              eventType = LOGISTICS_EVENT_TYPE_MAP[eventType];
+            }
+            const eventTime = parseExcelDate(row.event_time) || new Date().toISOString();
+            await trx('tracking_events').insert({
+              transfer_no: order.transfer_no,
+              event_time: eventTime,
+              event_type: eventType,
+              event_desc: row.event_desc || null,
+              location: row.location || null,
+              operator,
+              create_time: new Date().toISOString(),
+            });
+          }
+        }
+
+        await trx('change_logs').insert({
+          record_type: 'transfer_order',
+          record_id: order.id,
+          transfer_no: order.transfer_no,
+          field_name: 'IMPORT_LOGISTICS_MERGED',
+          old_value: '',
+          new_value: `${groupRows.length} rows`,
+          change_source: 'IMPORT',
+          operator,
+          reason: '物流信息导入',
+        });
+
+        updatedOrders++;
+      } catch (err: any) {
+        for (const row of groupRows) {
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 物流信息导入失败: ${err.message}` });
+        }
+      }
+    }
+  });
+
+  const allErrors = [...errors, ...orderErrors];
+  const successCount = validRows.length - orderErrors.length;
+
+  return {
+    total: parsedRows.length,
+    success: successCount,
+    failed: allErrors.length,
+    errors: allErrors,
+    createdOrders: 0,
+    updatedOrders,
+  };
+}
+
 export async function processFreightImport(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
   const { headers, rows } = parseExcel(buffer);
   if (headers.length === 0 || rows.length === 0) {
@@ -1205,24 +1363,17 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
 export function generateTemplate(type: string): ArrayBuffer {
   const headersByType: Record<string, string[]> = {
     main: [
-      '第三方入库单号', 'ERP订单号', '出库单号', '发货仓', '目的仓', '团队',
+      '第三方入库单号', '创建时间', '出库时间', 'ERP订单号', '出库单号', '发货仓', '目的仓', '团队',
       '来源', '调拨类型', '运输类型', '箱号', '物流跟踪号', '物流商',
       'SKU代码', 'SKU名称', '海外仓SKU', '品名', '应调拨数量',
       '是否报关', '报关工厂', '是否查验', '时效要求天数', '订单备注',
       '末程类型', '末程渠道', '预估单价', '运费币种', '运费分摊方式', '备注',
     ],
-    outbound: [
-      '第三方入库单号', '箱号', 'SKU代码', '实际出库数量', '出库差异', '差异原因',
-    ],
     logistics: [
-      '第三方入库单号', '物流商', '物流跟踪号', '提货时间',
-      '是否报关', '报关工厂', '是否查验', '物流异常', '物流异常类型', '物流异常备注', '延迟说明',
+      '第三方入库单号', '物流商', '物流跟踪号', '收件时间', '离港时间', '到港时间', '清关时间', '尾程提取时间', '签收时间', '卸货时间', '上架时间', '是否报关', '报关工厂', '是否查验', '尾程类型', '尾程渠道', '事件时间', '事件类型', '事件描述', '位置',
     ],
     inbound: [
       '第三方入库单号', '箱号', 'SKU代码', '签收数量', '上架数量', '上架差异', '上架异常', '上架异常类型', '上架异常备注',
-    ],
-    'logistics-events': [
-      '第三方入库单号', '事件时间', '事件类型', '事件描述', '位置', '操作人',
     ],
     freight: [
       '第三方入库单号', '物流商', '运费', '报关费', '其他费用', '币种', '汇率', '账单日期', '备注',

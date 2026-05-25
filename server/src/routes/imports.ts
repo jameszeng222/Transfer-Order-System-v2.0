@@ -3,10 +3,10 @@ import { db } from '../db/index.js';
 import { requirePermission } from '../middleware/auth.js';
 import {
   importExcel,
-  importOutboundReturn,
   importInboundReturn,
   importLogisticsInfo,
   importLogisticsEvents,
+  importLogisticsMerged,
   processFreightImport,
   generateTemplate,
 } from '../services/importService.js';
@@ -49,14 +49,6 @@ imports.post('/upload', async (c) => {
   return c.json({ success: true, data: result });
 });
 
-imports.post('/outbound', async (c) => {
-  const parsed = await parseUploadFile(c);
-  if (parsed instanceof Response) return parsed;
-  const { buffer, operator } = parsed;
-  const result = await importOutboundReturn(buffer, operator);
-  return c.json({ success: true, data: result });
-});
-
 imports.post('/inbound', async (c) => {
   const parsed = await parseUploadFile(c);
   if (parsed instanceof Response) return parsed;
@@ -69,15 +61,7 @@ imports.post('/logistics', async (c) => {
   const parsed = await parseUploadFile(c);
   if (parsed instanceof Response) return parsed;
   const { buffer, operator } = parsed;
-  const result = await importLogisticsInfo(buffer, operator);
-  return c.json({ success: true, data: result });
-});
-
-imports.post('/logistics-events', async (c) => {
-  const parsed = await parseUploadFile(c);
-  if (parsed instanceof Response) return parsed;
-  const { buffer, operator } = parsed;
-  const result = await importLogisticsEvents(buffer, operator);
+  const result = await importLogisticsMerged(buffer, operator);
   return c.json({ success: true, data: result });
 });
 
@@ -96,7 +80,7 @@ imports.get('/templates/:type', async (c) => {
   }
 
   const type = c.req.param('type');
-  const validTypes = ['main', 'outbound', 'logistics', 'inbound', 'logistics-events', 'freight'];
+  const validTypes = ['main', 'logistics', 'inbound', 'freight'];
   if (!validTypes.includes(type)) {
     return c.json({ success: false, error: `无效的模板类型，支持: ${validTypes.join(', ')}` }, 400);
   }
@@ -104,10 +88,8 @@ imports.get('/templates/:type', async (c) => {
   const buffer = generateTemplate(type);
   const typeNames: Record<string, string> = {
     main: '主导入',
-    outbound: '出库回传',
     logistics: '物流信息',
     inbound: '入库回传',
-    'logistics-events': '物流事件',
     freight: '运费账单',
   };
 
@@ -127,7 +109,7 @@ imports.get('/history', async (c) => {
 
   const query = db('change_logs')
     .where('change_source', 'IMPORT')
-    .whereIn('field_name', ['IMPORT_CREATE', 'IMPORT_OVERWRITE', 'IMPORT_OUTBOUND', 'IMPORT_INBOUND', 'IMPORT_LOGISTICS', 'IMPORT_LOGISTICS_EVENTS', 'IMPORT_FREIGHT']);
+    .whereIn('field_name', ['IMPORT_CREATE', 'IMPORT_OVERWRITE', 'IMPORT_OUTBOUND', 'IMPORT_INBOUND', 'IMPORT_LOGISTICS', 'IMPORT_LOGISTICS_EVENTS', 'IMPORT_LOGISTICS_MERGED', 'IMPORT_FREIGHT']);
 
   const totalResult = await query.clone().count('* as count').first();
   const total = Number(totalResult?.count || 0);

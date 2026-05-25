@@ -11,6 +11,7 @@ import { FormField } from '../../components/ui/FormField';
 import { Pagination } from '../../components/ui/Pagination';
 import { StatCard } from '../../components/ui/StatCard';
 import { EmptyState } from '../../components/ui/EmptyState';
+import DateRangeFilter from '../../components/ui/DateRangeFilter';
 
 interface Stats {
   pending: number;
@@ -76,6 +77,11 @@ export default function DiscrepancyPage() {
   const [stats, setStats] = useState<Stats>({ pending: 0, processing: 0, closed: 0 });
 
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [createTimeRange, setCreateTimeRange] = useState({ start: '', end: '' });
+  const [departTimeRange, setDepartTimeRange] = useState({ start: '', end: '' });
+  const [pickupTimeRange, setPickupTimeRange] = useState({ start: '', end: '' });
+  const [deliveryTimeRange, setDeliveryTimeRange] = useState({ start: '', end: '' });
+  const [shelveTimeRange, setShelveTimeRange] = useState({ start: '', end: '' });
 
   const [resolveOpen, setResolveOpen] = useState(false);
   const [resolveRow, setResolveRow] = useState<Record<string, unknown> | null>(null);
@@ -98,6 +104,16 @@ export default function DiscrepancyPage() {
       for (const [k, v] of Object.entries(filters)) {
         if (v) params.set(k, v);
       }
+      if (createTimeRange.start) params.set('create_time_start', createTimeRange.start);
+      if (createTimeRange.end) params.set('create_time_end', createTimeRange.end);
+      if (departTimeRange.start) params.set('depart_time_start', departTimeRange.start);
+      if (departTimeRange.end) params.set('depart_time_end', departTimeRange.end);
+      if (pickupTimeRange.start) params.set('pickup_time_start', pickupTimeRange.start);
+      if (pickupTimeRange.end) params.set('pickup_time_end', pickupTimeRange.end);
+      if (deliveryTimeRange.start) params.set('delivery_time_start', deliveryTimeRange.start);
+      if (deliveryTimeRange.end) params.set('delivery_time_end', deliveryTimeRange.end);
+      if (shelveTimeRange.start) params.set('shelve_time_start', shelveTimeRange.start);
+      if (shelveTimeRange.end) params.set('shelve_time_end', shelveTimeRange.end);
       const res = await api.get<{
         success: boolean;
         data: Record<string, unknown>[];
@@ -113,7 +129,7 @@ export default function DiscrepancyPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, filters]);
+  }, [page, filters, createTimeRange, departTimeRange, pickupTimeRange, deliveryTimeRange, shelveTimeRange]);
 
   useEffect(() => {
     if (canView) { fetchData(); fetchStats(); }
@@ -242,6 +258,43 @@ export default function DiscrepancyPage() {
             </select>
           </div>
           <Button variant="secondary" onClick={handleSearch}>搜索</Button>
+        </div>
+        <div className="flex flex-wrap items-end gap-3 mt-3">
+          <DateRangeFilter
+            label="创建时间"
+            startValue={createTimeRange.start}
+            endValue={createTimeRange.end}
+            onStartChange={(v) => setCreateTimeRange((r) => ({ ...r, start: v }))}
+            onEndChange={(v) => setCreateTimeRange((r) => ({ ...r, end: v }))}
+          />
+          <DateRangeFilter
+            label="出库时间"
+            startValue={departTimeRange.start}
+            endValue={departTimeRange.end}
+            onStartChange={(v) => setDepartTimeRange((r) => ({ ...r, start: v }))}
+            onEndChange={(v) => setDepartTimeRange((r) => ({ ...r, end: v }))}
+          />
+          <DateRangeFilter
+            label="收件时间"
+            startValue={pickupTimeRange.start}
+            endValue={pickupTimeRange.end}
+            onStartChange={(v) => setPickupTimeRange((r) => ({ ...r, start: v }))}
+            onEndChange={(v) => setPickupTimeRange((r) => ({ ...r, end: v }))}
+          />
+          <DateRangeFilter
+            label="签收时间"
+            startValue={deliveryTimeRange.start}
+            endValue={deliveryTimeRange.end}
+            onStartChange={(v) => setDeliveryTimeRange((r) => ({ ...r, start: v }))}
+            onEndChange={(v) => setDeliveryTimeRange((r) => ({ ...r, end: v }))}
+          />
+          <DateRangeFilter
+            label="上架时间"
+            startValue={shelveTimeRange.start}
+            endValue={shelveTimeRange.end}
+            onStartChange={(v) => setShelveTimeRange((r) => ({ ...r, start: v }))}
+            onEndChange={(v) => setShelveTimeRange((r) => ({ ...r, end: v }))}
+          />
         </div>
       </Card>
 

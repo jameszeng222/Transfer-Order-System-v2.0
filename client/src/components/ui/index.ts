@@ -17,3 +17,5 @@ export { Pagination } from './Pagination';
 export { StatCard } from './StatCard';
 
 export { EmptyState } from './EmptyState';
+
+export { default as DateRangeFilter } from './DateRangeFilter';

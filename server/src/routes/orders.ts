@@ -59,6 +59,16 @@ orders.get('/', async (c) => {
   const abnormal = c.req.query('abnormal');
   const sortBy = c.req.query('sortBy') || 'create_time';
   const sortOrder = c.req.query('sortOrder') || 'desc';
+  const createTimeStart = c.req.query('create_time_start');
+  const createTimeEnd = c.req.query('create_time_end');
+  const departTimeStart = c.req.query('depart_time_start');
+  const departTimeEnd = c.req.query('depart_time_end');
+  const pickupTimeStart = c.req.query('pickup_time_start');
+  const pickupTimeEnd = c.req.query('pickup_time_end');
+  const deliveryTimeStart = c.req.query('delivery_time_start');
+  const deliveryTimeEnd = c.req.query('delivery_time_end');
+  const shelveTimeStart = c.req.query('shelve_time_start');
+  const shelveTimeEnd = c.req.query('shelve_time_end');
 
   let query = db('transfer_orders');
 
@@ -99,6 +109,37 @@ orders.get('/', async (c) => {
         this.where('is_logistics_abnormal', 1).orWhere('is_shelf_abnormal', 1);
       });
     }
+  }
+
+  if (createTimeStart) {
+    query = query.where('create_time', '>=', createTimeStart);
+  }
+  if (createTimeEnd) {
+    query = query.where('create_time', '<=', createTimeEnd + 'T23:59:59.999Z');
+  }
+  if (departTimeStart) {
+    query = query.where('depart_time', '>=', departTimeStart);
+  }
+  if (departTimeEnd) {
+    query = query.where('depart_time', '<=', departTimeEnd + 'T23:59:59.999Z');
+  }
+  if (pickupTimeStart) {
+    query = query.where('pickup_time', '>=', pickupTimeStart);
+  }
+  if (pickupTimeEnd) {
+    query = query.where('pickup_time', '<=', pickupTimeEnd + 'T23:59:59.999Z');
+  }
+  if (deliveryTimeStart) {
+    query = query.where('delivery_time', '>=', deliveryTimeStart);
+  }
+  if (deliveryTimeEnd) {
+    query = query.where('delivery_time', '<=', deliveryTimeEnd + 'T23:59:59.999Z');
+  }
+  if (shelveTimeStart) {
+    query = query.where('shelve_time', '>=', shelveTimeStart);
+  }
+  if (shelveTimeEnd) {
+    query = query.where('shelve_time', '<=', shelveTimeEnd + 'T23:59:59.999Z');
   }
 
   const totalResult = await query.clone().count('* as count').first();

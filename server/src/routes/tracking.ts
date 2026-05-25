@@ -53,6 +53,16 @@ tracking.get('/intransit', async (c) => {
   const toWarehouse = c.req.query('to_warehouse');
   const transportType = c.req.query('transport_type');
   const isTimeout = c.req.query('is_timeout');
+  const createTimeStart = c.req.query('create_time_start');
+  const createTimeEnd = c.req.query('create_time_end');
+  const departTimeStart = c.req.query('depart_time_start');
+  const departTimeEnd = c.req.query('depart_time_end');
+  const pickupTimeStart = c.req.query('pickup_time_start');
+  const pickupTimeEnd = c.req.query('pickup_time_end');
+  const deliveryTimeStart = c.req.query('delivery_time_start');
+  const deliveryTimeEnd = c.req.query('delivery_time_end');
+  const shelveTimeStart = c.req.query('shelve_time_start');
+  const shelveTimeEnd = c.req.query('shelve_time_end');
 
   let query = db('transfer_orders').where('status', 'IN_TRANSIT');
 
@@ -64,6 +74,36 @@ tracking.get('/intransit', async (c) => {
   }
   if (transportType) {
     query = query.where('transport_type', transportType);
+  }
+  if (createTimeStart) {
+    query = query.where('create_time', '>=', createTimeStart);
+  }
+  if (createTimeEnd) {
+    query = query.where('create_time', '<=', createTimeEnd + 'T23:59:59.999Z');
+  }
+  if (departTimeStart) {
+    query = query.where('depart_time', '>=', departTimeStart);
+  }
+  if (departTimeEnd) {
+    query = query.where('depart_time', '<=', departTimeEnd + 'T23:59:59.999Z');
+  }
+  if (pickupTimeStart) {
+    query = query.where('pickup_time', '>=', pickupTimeStart);
+  }
+  if (pickupTimeEnd) {
+    query = query.where('pickup_time', '<=', pickupTimeEnd + 'T23:59:59.999Z');
+  }
+  if (deliveryTimeStart) {
+    query = query.where('delivery_time', '>=', deliveryTimeStart);
+  }
+  if (deliveryTimeEnd) {
+    query = query.where('delivery_time', '<=', deliveryTimeEnd + 'T23:59:59.999Z');
+  }
+  if (shelveTimeStart) {
+    query = query.where('shelve_time', '>=', shelveTimeStart);
+  }
+  if (shelveTimeEnd) {
+    query = query.where('shelve_time', '<=', shelveTimeEnd + 'T23:59:59.999Z');
   }
 
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
