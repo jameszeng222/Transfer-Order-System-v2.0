@@ -265,11 +265,12 @@ orders.get('/in-progress', async (c) => {
   return c.json({ success: true, data: result });
 });
 
-orders.get('/detail', async (c) => {
-  const transferNo = c.req.query('transferNo');
-  if (!transferNo) {
-    return c.json({ success: false, error: 'transferNo is required' }, 400);
-  }
+const detailQuerySchema = z.object({
+  transferNo: z.string().min(1),
+});
+
+orders.post('/detail', zValidator('json', detailQuerySchema), async (c) => {
+  const { transferNo } = c.req.valid('json');
 
   const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
   if (!order) {
@@ -326,12 +327,10 @@ orders.get('/detail', async (c) => {
   });
 });
 
-orders.put('/status', zValidator('json', statusChangeSchema), async (c) => {
-  const transferNo = c.req.query('transferNo');
-  if (!transferNo) {
-    return c.json({ success: false, error: 'transferNo is required' }, 400);
-  }
-  const { status: newStatus, remark } = c.req.valid('json');
+const statusChangeWithTransferSchema = statusChangeSchema.extend({ transferNo: z.string().min(1) });
+
+orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async (c) => {
+  const { transferNo, status: newStatus, remark } = c.req.valid('json');
   const user = c.get('user');
 
   const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
@@ -390,12 +389,10 @@ orders.put('/status', zValidator('json', statusChangeSchema), async (c) => {
   return c.json({ success: true, data: updated });
 });
 
-orders.put('/edit', zValidator('json', editOrderSchema), async (c) => {
-  const transferNo = c.req.query('transferNo');
-  if (!transferNo) {
-    return c.json({ success: false, error: 'transferNo is required' }, 400);
-  }
-  const body = c.req.valid('json');
+const editOrderWithTransferSchema = editOrderSchema.extend({ transferNo: z.string().min(1) });
+
+orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) => {
+  const { transferNo, ...body } = c.req.valid('json');
   const user = c.get('user');
 
   const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();

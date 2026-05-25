@@ -82,7 +82,7 @@ export default function OrderDetailPage() {
     if (!tn) { setLoading(false); return; }
     setLoading(true);
     setErrorMsg('');
-    api.get<{ success: boolean; data: OrderDetail }>(`/orders/detail?transferNo=${tn}`)
+    api.post<{ success: boolean; data: OrderDetail }>(`/orders/detail`, { transferNo: tn })
       .then((res) => { if (res.success) setOrder(res.data); else { setOrder(null); setErrorMsg('数据返回异常'); } })
       .catch((err) => { setOrder(null); setErrorMsg(err.message || '请求失败'); })
       .finally(() => { setLoading(false); });
@@ -99,7 +99,7 @@ export default function OrderDetailPage() {
     if (!confirm(`确认执行「${label}」操作？`)) return;
     setActionLoading(true);
     try {
-      const res = await api.put<{ success: boolean; data: OrderDetail; error?: string }>(`/orders/status?transferNo=${transferNo}`, { status: newStatus });
+      const res = await api.put<{ success: boolean; data: OrderDetail; error?: string }>(`/orders/status`, { transferNo, status: newStatus });
       if (res.success) await fetchOrder(transferNo!);
       else alert(res.error || '操作失败');
     } catch (err: unknown) {
