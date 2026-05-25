@@ -286,8 +286,9 @@ const detailQuerySchema = z.object({
   transferNo: z.string().min(1),
 });
 
-orders.post('/fetch', zValidator('json', detailQuerySchema), async (c) => {
-  const { transferNo } = c.req.valid('json');
+orders.post('/fetch', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const transferNo = body.transferNo;
 
   const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
   if (!order) {
