@@ -342,13 +342,12 @@ orders.post('/xquery', async (c) => {
   return c.json({
     success: true,
     data: {
-      ...order,
-      items,
-      cartons: cartonsWithItems,
-      tracking_events: trackingEvents,
-      discrepancy_records: discrepancyRecords,
-      freight_bills: freightBills,
-      change_logs: changeLogs,
+      transfer_no: order.transfer_no,
+      status: order.status,
+      from_warehouse: order.from_warehouse,
+      to_warehouse: order.to_warehouse,
+      items_count: items.length,
+      cartons_count: cartons.length,
     },
   });
 });
