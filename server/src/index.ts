@@ -5,6 +5,13 @@ import { logger } from './middleware/logger.js';
 import { errorHandler } from './middleware/error.js';
 import routes from './routes/index.js';
 import { db } from './db/index.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const serverDir = path.resolve(__dirname, '..');
+const rootDir = path.resolve(serverDir, '..');
 
 const app = new Hono();
 
@@ -28,9 +35,14 @@ app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISO
 const port = Number(process.env.PORT) || 3001;
 
 async function bootstrap() {
+  const dataDir = path.resolve(rootDir, 'data');
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+
   console.log('Running migrations...');
   await db.migrate.latest({
-    directory: './migrations',
+    directory: path.resolve(serverDir, 'migrations'),
     extension: 'ts',
   });
 
@@ -38,7 +50,7 @@ async function bootstrap() {
   if (Number(hasUsers?.count) === 0) {
     console.log('No users found, running seed...');
     await db.seed.run({
-      directory: './seeds',
+      directory: path.resolve(serverDir, 'seeds'),
       extension: 'ts',
     });
   }

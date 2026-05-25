@@ -28,11 +28,11 @@
     "xlsx": "^0.18.5",
     "axios": "^1.7.0",
     "node-cron": "^3.0.3",
+    "tsx": "^4.19.0",
     "shared": "*"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
-    "tsx": "^4.19.0",
     "@types/better-sqlite3": "^7.6.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.7",
