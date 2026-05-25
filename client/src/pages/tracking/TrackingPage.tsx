@@ -183,7 +183,7 @@ export default function TrackingPage() {
         <div>
           <span
             className="font-medium text-accent cursor-pointer hover:text-accent-hover transition-colors"
-            onClick={() => navigate(`/orders/${row.transfer_no as string}`)}
+            onClick={() => navigate(`/orders/detail?transferNo=${row.transfer_no as string}`)}
           >
             {(row.inbound_order_no as string) || '--'}
           </span>

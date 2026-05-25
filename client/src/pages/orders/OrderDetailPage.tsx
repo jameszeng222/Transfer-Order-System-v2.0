@@ -76,13 +76,15 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const fetchOrder = useCallback((tn: string) => {
-    if (!tn) return;
+    if (!tn) { setLoading(false); return; }
     setLoading(true);
+    setErrorMsg('');
     api.get<{ success: boolean; data: OrderDetail }>(`/orders/detail?transferNo=${tn}`)
-      .then((res) => { if (res.success) setOrder(res.data); })
-      .catch(() => { setOrder(null); })
+      .then((res) => { if (res.success) setOrder(res.data); else { setOrder(null); setErrorMsg('数据返回异常'); } })
+      .catch((err) => { setOrder(null); setErrorMsg(err.message || '请求失败'); })
       .finally(() => { setLoading(false); });
   }, []);
 
@@ -107,7 +109,7 @@ export default function OrderDetailPage() {
   };
 
   if (loading) return <div className="flex items-center justify-center py-24"><span className="text-sm text-text-tertiary">加载中...</span></div>;
-  if (!order) return <EmptyState title="调拨单不存在" action={<Button variant="ghost" onClick={() => navigate('/orders')}>返回列表</Button>} />;
+  if (!order) return <EmptyState title="调拨单不存在" description={errorMsg || (transferNo ? '' : '未指定调拨单号')} action={<Button variant="ghost" onClick={() => navigate('/orders')}>返回列表</Button>} />;
 
   const nextStatus = NEXT_STATUS[order.status];
 

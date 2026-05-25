@@ -260,7 +260,7 @@ export default function DashboardPage() {
                     <td className="px-4 py-2.5">
                       <span
                         className="text-accent cursor-pointer hover:underline font-medium"
-                        onClick={() => navigate(`/orders/${order.transfer_no}`)}
+                        onClick={() => navigate(`/orders/detail?transferNo=${order.transfer_no}`)}
                       >
                         {order.inbound_order_no}
                       </span>
