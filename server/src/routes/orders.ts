@@ -269,6 +269,10 @@ orders.post('/debug-auth', async (c) => {
   const authHeader = c.req.header('Authorization');
   const body = await c.req.json().catch(() => ({}));
   const user = c.get('user');
+  let dbResult = null;
+  if (body.transferNo) {
+    dbResult = await db('transfer_orders').where({ transfer_no: body.transferNo }).first();
+  }
   return c.json({
     success: true,
     debug: {
@@ -278,6 +282,7 @@ orders.post('/debug-auth', async (c) => {
       transferNo: body.transferNo,
       hasUser: !!user,
       userId: user?.userId,
+      dbResult: dbResult ? { transfer_no: dbResult.transfer_no, status: dbResult.status } : null,
     },
   });
 });
