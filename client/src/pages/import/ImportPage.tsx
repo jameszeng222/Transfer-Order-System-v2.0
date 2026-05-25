@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Upload } from 'lucide-react';
+import { Upload, Download } from 'lucide-react';
 import { Button, Card, Badge } from '../../components/ui';
+import { api } from '../../api/client';
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 interface RowError { row: number; message: string; }
 interface ImportResult { total: number; success: number; failed: number; errors: RowError[]; createdOrders: number; updatedOrders: number; }
@@ -13,15 +16,16 @@ interface ImportCardConfig {
   badgeVariant?: 'pending' | 'shipped' | 'transit' | 'received' | 'shelved' | 'complete' | 'abnormal';
   description: string;
   endpoint: string;
+  templateType: string;
 }
 
 const IMPORT_CARDS: ImportCardConfig[] = [
-  { key: 'main', label: '调拨单导入', badge: '主导入', badgeVariant: 'pending', description: '箱×SKU粒度，一次性导入全部基础信息', endpoint: '/imports/upload' },
-  { key: 'outbound', label: '出库回传', description: '出库数量回传确认', endpoint: '/imports/outbound' },
-  { key: 'logistics', label: '物流信息', description: '物流节点/异常/报关信息', endpoint: '/imports/logistics' },
-  { key: 'inbound', label: '入库回传', description: '签收/上架数量回传', endpoint: '/imports/inbound' },
-  { key: 'logistics-events', label: '物流时间节点', description: '周一/三/五批量导入', endpoint: '/imports/logistics-events' },
-  { key: 'reconcile', label: '运费账单导入', description: '运费确认后自动分摊到SKU', endpoint: '/imports/freight' },
+  { key: 'main', label: '调拨单导入', badge: '主导入', badgeVariant: 'pending', description: '箱×SKU粒度，一次性导入全部基础信息', endpoint: '/imports/upload', templateType: 'main' },
+  { key: 'outbound', label: '出库回传', description: '出库数量回传确认', endpoint: '/imports/outbound', templateType: 'outbound' },
+  { key: 'logistics', label: '物流信息', description: '物流节点/异常/报关信息', endpoint: '/imports/logistics', templateType: 'logistics' },
+  { key: 'inbound', label: '入库回传', description: '签收/上架数量回传', endpoint: '/imports/inbound', templateType: 'inbound' },
+  { key: 'logistics-events', label: '物流时间节点', description: '周一/三/五批量导入', endpoint: '/imports/logistics-events', templateType: 'logistics-events' },
+  { key: 'reconcile', label: '运费账单导入', description: '运费确认后自动分摊到SKU', endpoint: '/imports/freight', templateType: 'freight' },
 ];
 
 export default function ImportPage() {
@@ -34,11 +38,7 @@ export default function ImportPage() {
   const fetchHistory = async () => {
     setHistoryLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/imports/history', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const data = await api.get<{ success: boolean; data: ImportHistory[] }>('/imports/history');
       if (data.success) setHistory(data.data);
     } catch {
       setHistory([]);
@@ -48,7 +48,6 @@ export default function ImportPage() {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchHistory();
   }, []);
 
@@ -63,7 +62,7 @@ export default function ImportPage() {
       const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('file', f);
-      const res = await fetch(`/api${config.endpoint}`, {
+      const res = await fetch(`${API_BASE}${config.endpoint}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -83,6 +82,28 @@ export default function ImportPage() {
     }
   };
 
+  const handleDownloadTemplate = async (config: ImportCardConfig) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/imports/templates/${config.templateType}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('下载模板失败');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${config.label}模板.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '下载失败';
+      alert(msg);
+    }
+  };
+
   const triggerFileInput = (key: string) => {
     fileInputRefs.current[key]?.click();
   };
@@ -97,7 +118,7 @@ export default function ImportPage() {
                 {config.label}
                 {config.badge && <Badge variant={config.badgeVariant || 'pending'} className="ml-1.5 text-[9px]">{config.badge}</Badge>}
               </div>
-              <div className="text-xs text-text-tertiary mb-3">{config.description}</div>
+              <div className="text-xs text-text-tertiary mb-4">{config.description}</div>
               <input
                 ref={(el) => { fileInputRefs.current[config.key] = el; }}
                 type="file"
@@ -105,7 +126,10 @@ export default function ImportPage() {
                 className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(config, f); e.target.value = ''; }}
               />
-              <Button size="sm" icon={Upload} loading={loadingKey === config.key} onClick={() => triggerFileInput(config.key)}>选择文件上传</Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" icon={Upload} loading={loadingKey === config.key} onClick={() => triggerFileInput(config.key)}>选择文件上传</Button>
+                <Button size="sm" variant="secondary" icon={Download} onClick={() => handleDownloadTemplate(config)}>下载模板</Button>
+              </div>
             </div>
           </Card>
         ))}

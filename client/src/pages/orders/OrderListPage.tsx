@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, RotateCcw, Upload, Plus, Download } from 'lucide-react';
 import { api } from '../../api/client';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 import { TransferStatusLabel, TransportTypeLabel } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
 import { Button, Card, FormField, Table, Badge, Pagination } from '../../components/ui';
@@ -156,7 +157,7 @@ export default function OrderListPage() {
     if (filters.team) params.set('team', filters.team);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
     const token = localStorage.getItem('token');
-    const res = await fetch(`/api/orders/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`${API_BASE}/orders/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return;
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, ShieldCheck, Search, RotateCcw } from 'lucide-react';
 import { api } from '../../api/client';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 import { TransportTypeLabel } from 'shared/constants';
 import type { TransportType } from 'shared/constants';
 import { StatCard, Card, FormField, Table, Pagination, Button, Badge } from '../../components/ui';
@@ -152,7 +153,7 @@ export default function TrackingPage() {
     if (filters.transport_type) params.set('transport_type', filters.transport_type);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
     const token = localStorage.getItem('token');
-    const res = await fetch(`/api/tracking/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`${API_BASE}/tracking/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return;
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
