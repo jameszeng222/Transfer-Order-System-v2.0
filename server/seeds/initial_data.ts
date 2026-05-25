@@ -243,7 +243,7 @@ export async function seed(knex: Knex): Promise<void> {
     { transfer_no: 'DB-20260510-004', inbound_order_no: 'INB-20260510-004', sku_code: 'SKU-008', sku_name: 'USB集线器', expected_qty: 150, outbound_qty: 0, inbound_qty: 0, shelf_qty: 0, unit_weight: 0.20, unit_volume: 0.0015 },
     { transfer_no: 'DB-20260510-004', inbound_order_no: 'INB-20260510-004', sku_code: 'SKU-009', sku_name: '鼠标垫 大号', expected_qty: 100, outbound_qty: 0, inbound_qty: 0, shelf_qty: 0, unit_weight: 0.35, unit_volume: 0.004 },
     { transfer_no: 'DB-20260510-004', inbound_order_no: 'INB-20260510-004', sku_code: 'SKU-010', sku_name: '屏幕清洁套装', expected_qty: 50, outbound_qty: 0, inbound_qty: 0, shelf_qty: 0, unit_weight: 0.10, unit_volume: 0.0008 },
-    { transfer_no: 'DB-20260512-005', inbound_order_no: 'INB-20260512-005', sku_code: 'SKU-011', sku_name: '数据线三合一', expected_qty: 150, outbound_qty: 150, inbound_qty: 150, shelf_qty: 130, inbound_diff: 0, shelf_abnormal_type: 'QTY_MISMATCH', unit_weight: 0.06, unit_volume: 0.0004, freight_cost_total: 4800.00, freight_cost_per_unit: 32.00 },
+    { transfer_no: 'DB-20260512-005', inbound_order_no: 'INB-20260512-005', sku_code: 'SKU-011', sku_name: '数据线三合一', expected_qty: 150, outbound_qty: 150, inbound_qty: 150, shelf_qty: 130, total_diff: -20, diff_reason: '上架少20个', unit_weight: 0.06, unit_volume: 0.0004, freight_cost_total: 4800.00, freight_cost_per_unit: 32.00 },
   ]);
 
   await knex('transfer_cartons').insert([
@@ -296,51 +296,51 @@ export async function seed(knex: Knex): Promise<void> {
   ]);
 
   await knex('tracking_events').insert([
-    { transfer_no: 'DB-20260501-001', event_time: '2026-05-02T09:00:00Z', event_type: 'PICKUP', location: '深圳仓', description: '物流商提货', carrier: '万邑通', tracking_no: 'WYT20260501001' },
-    { transfer_no: 'DB-20260501-001', event_time: '2026-05-03T14:00:00Z', event_type: 'DEPARTURE', location: '深圳盐田港', description: '离港发运', carrier: '万邑通', tracking_no: 'WYT20260501001' },
-    { transfer_no: 'DB-20260501-001', event_time: '2026-05-15T08:00:00Z', event_type: 'ARRIVAL', location: '洛杉矶港', description: '到港', carrier: '万邑通', tracking_no: 'WYT20260501001' },
-    { transfer_no: 'DB-20260501-001', event_time: '2026-05-16T10:00:00Z', event_type: 'CUSTOMS_CLEARANCE', location: '洛杉矶港', description: '清关完成', carrier: '万邑通', tracking_no: 'WYT20260501001' },
-    { transfer_no: 'DB-20260501-001', event_time: '2026-05-17T09:00:00Z', event_type: 'LAST_MILE', location: '洛杉矶', description: '尾程提货', carrier: 'UPS', tracking_no: 'WYT20260501001' },
-    { transfer_no: 'DB-20260501-001', event_time: '2026-05-18T11:00:00Z', event_type: 'DELIVERY', location: '洛杉矶仓', description: '签收入库', carrier: 'UPS', tracking_no: 'WYT20260501001' },
-    { transfer_no: 'DB-20260505-002', event_time: '2026-05-06T10:00:00Z', event_type: 'PICKUP', location: '广州仓', description: '物流商提货', carrier: '递四方', tracking_no: 'DSF20260505002' },
-    { transfer_no: 'DB-20260505-002', event_time: '2026-05-07T16:00:00Z', event_type: 'DEPARTURE', location: '广州南沙港', description: '离港发运', carrier: '递四方', tracking_no: 'DSF20260505002' },
-    { transfer_no: 'DB-20260512-005', event_time: '2026-05-13T08:00:00Z', event_type: 'PICKUP', location: '广州仓', description: '物流商提货', carrier: '顺丰国际', tracking_no: 'SF20260512005' },
-    { transfer_no: 'DB-20260512-005', event_time: '2026-05-14T12:00:00Z', event_type: 'DEPARTURE', location: '广州白云机场', description: '离港', carrier: '顺丰国际', tracking_no: 'SF20260512005' },
-    { transfer_no: 'DB-20260512-005', event_time: '2026-05-19T06:00:00Z', event_type: 'ARRIVAL', location: '东京成田机场', description: '到港', carrier: '顺丰国际', tracking_no: 'SF20260512005' },
-    { transfer_no: 'DB-20260512-005', event_time: '2026-05-20T09:00:00Z', event_type: 'CUSTOMS_CLEARANCE', location: '东京', description: '清关完成', carrier: '顺丰国际', tracking_no: 'SF20260512005' },
-    { transfer_no: 'DB-20260512-005', event_time: '2026-05-21T10:00:00Z', event_type: 'DELIVERY', location: '东京仓', description: '签收入库', carrier: '佐川急便', tracking_no: 'SF20260512005' },
+    { transfer_no: 'DB-20260501-001', event_time: '2026-05-02T09:00:00Z', event_type: 'SHIPPED', location: '深圳仓', event_desc: '物流商提货', operator: '万邑通' },
+    { transfer_no: 'DB-20260501-001', event_time: '2026-05-03T14:00:00Z', event_type: 'SHIPPED', location: '深圳盐田港', event_desc: '离港发运', operator: '万邑通' },
+    { transfer_no: 'DB-20260501-001', event_time: '2026-05-15T08:00:00Z', event_type: 'ARRIVED_PORT', location: '洛杉矶港', event_desc: '到港', operator: '万邑通' },
+    { transfer_no: 'DB-20260501-001', event_time: '2026-05-16T10:00:00Z', event_type: 'CLEARED', location: '洛杉矶港', event_desc: '清关完成', operator: '万邑通' },
+    { transfer_no: 'DB-20260501-001', event_time: '2026-05-17T09:00:00Z', event_type: 'PICKED_UP', location: '洛杉矶', event_desc: '尾程提货', operator: 'UPS' },
+    { transfer_no: 'DB-20260501-001', event_time: '2026-05-18T11:00:00Z', event_type: 'SIGNED', location: '洛杉矶仓', event_desc: '签收入库', operator: 'UPS' },
+    { transfer_no: 'DB-20260505-002', event_time: '2026-05-06T10:00:00Z', event_type: 'SHIPPED', location: '广州仓', event_desc: '物流商提货', operator: '递四方' },
+    { transfer_no: 'DB-20260505-002', event_time: '2026-05-07T16:00:00Z', event_type: 'SHIPPED', location: '广州南沙港', event_desc: '离港发运', operator: '递四方' },
+    { transfer_no: 'DB-20260512-005', event_time: '2026-05-13T08:00:00Z', event_type: 'SHIPPED', location: '广州仓', event_desc: '物流商提货', operator: '顺丰国际' },
+    { transfer_no: 'DB-20260512-005', event_time: '2026-05-14T12:00:00Z', event_type: 'SHIPPED', location: '广州白云机场', event_desc: '离港', operator: '顺丰国际' },
+    { transfer_no: 'DB-20260512-005', event_time: '2026-05-19T06:00:00Z', event_type: 'ARRIVED_PORT', location: '东京成田机场', event_desc: '到港', operator: '顺丰国际' },
+    { transfer_no: 'DB-20260512-005', event_time: '2026-05-20T09:00:00Z', event_type: 'CLEARED', location: '东京', event_desc: '清关完成', operator: '顺丰国际' },
+    { transfer_no: 'DB-20260512-005', event_time: '2026-05-21T10:00:00Z', event_type: 'SIGNED', location: '东京仓', event_desc: '签收入库', operator: '佐川急便' },
   ]);
 
   await knex('freight_bills').insert([
     {
-      bill_no: 'FB-20260501-001', transfer_no: 'DB-20260501-001', inbound_order_no: 'INB-20260501-001',
-      carrier_name: '万邑通', bill_type: 'SEA_FREIGHT', total_amount: 13200.50, currency: 'CNY',
-      weight_kg: 52.2, volume_cbm: 2.8, allocation_method: 'BY_QUANTITY',
-      status: 'CONFIRMED', bill_date: '2026-05-20', confirmed_time: '2026-05-22T10:00:00Z',
-      confirmed_by: 'admin',
+      bill_no: 'FB-20260501-001', transfer_no: 'DB-20260501-001',
+      logistics_carrier: '万邑通', freight_fee: 12000.00, customs_fee: 800.50, other_fee: 400.00,
+      total_amount: 13200.50, currency: 'CNY', exchange_rate: 1, total_amount_cny: 13200.50,
+      bill_date: '2026-05-20', bill_status: 'CONFIRMED', confirm_time: '2026-05-22T10:00:00Z',
+      confirmer: 'admin',
     },
     {
-      bill_no: 'FB-20260512-005', transfer_no: 'DB-20260512-005', inbound_order_no: 'INB-20260512-005',
-      carrier_name: '顺丰国际', bill_type: 'SEA_FREIGHT', total_amount: 4800.00, currency: 'CNY',
-      weight_kg: 18.3, volume_cbm: 0.9, allocation_method: 'BY_QUANTITY',
-      status: 'PENDING', bill_date: '2026-05-22',
+      bill_no: 'FB-20260512-005', transfer_no: 'DB-20260512-005',
+      logistics_carrier: '顺丰国际', freight_fee: 4200.00, customs_fee: 300.00, other_fee: 300.00,
+      total_amount: 4800.00, currency: 'CNY', exchange_rate: 1, total_amount_cny: 4800.00,
+      bill_date: '2026-05-22', bill_status: 'PENDING',
     },
   ]);
 
   await knex('discrepancy_records').insert([
     {
-      transfer_no: 'DB-20260512-005', inbound_order_no: 'INB-20260512-005',
-      sku_code: 'SKU-011', sku_name: '数据线三合一', carton_no: 'CTN-005-01',
-      discrepancy_category: 'SHELF', discrepancy_type: 'QTY_MISMATCH',
-      expected_qty: 80, actual_qty: 70, diff_qty: -10,
-      status: 'PENDING', description: '上架数量比签收少10个，原因待查',
+      transfer_no: 'DB-20260512-005',
+      sku_code: 'SKU-011', carton_no: 'CTN-005-01',
+      discrepancy_category: 'SHELF_ABNORMAL', discrepancy_type: 'PARTIAL_SHELF',
+      discrepancy_qty: -10,
+      status: 'PENDING', resolution_remark: '上架数量比签收少10个，原因待查',
     },
     {
-      transfer_no: 'DB-20260512-005', inbound_order_no: 'INB-20260512-005',
-      sku_code: 'SKU-011', sku_name: '数据线三合一', carton_no: 'CTN-005-02',
-      discrepancy_category: 'SHELF', discrepancy_type: 'QTY_MISMATCH',
-      expected_qty: 70, actual_qty: 60, diff_qty: -10,
-      status: 'PENDING', description: '上架数量比签收少10个，原因待查',
+      transfer_no: 'DB-20260512-005',
+      sku_code: 'SKU-011', carton_no: 'CTN-005-02',
+      discrepancy_category: 'SHELF_ABNORMAL', discrepancy_type: 'PARTIAL_SHELF',
+      discrepancy_qty: -10,
+      status: 'PENDING', resolution_remark: '上架数量比签收少10个，原因待查',
     },
   ]);
 }

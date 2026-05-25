@@ -5,3 +5,4 @@ data/*.db
 *.log
 .env
 .env.local
+data/transfer.db
