@@ -48,9 +48,8 @@ async function bootstrap() {
   });
 
   const hasUsers = await db('users').count('* as count').first();
-  const hasItems = await db('transfer_order_items').count('* as count').first();
-  if (Number(hasUsers?.count) === 0 || Number(hasItems?.count) === 0) {
-    console.log('Seeding data (users or items missing)...');
+  if (Number(hasUsers?.count) === 0) {
+    console.log('Seeding foundational data (users missing)...');
     await db.seed.run({
       directory: path.resolve(serverDir, 'seeds'),
       extension: 'ts',

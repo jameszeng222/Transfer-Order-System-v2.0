@@ -50,23 +50,11 @@ const READONLY_PERMISSIONS = [
 ];
 
 export async function seed(knex: Knex): Promise<void> {
-  await knex('job_queue').del();
-  await knex('api_integrations').del();
-  await knex('change_logs').del();
-  await knex('freight_bills').del();
-  await knex('discrepancy_records').del();
-  await knex('transfer_carton_items').del();
-  await knex('transfer_cartons').del();
-  await knex('tracking_events').del();
-  await knex('transfer_order_items').del();
-  await knex('transfer_orders').del();
-  await knex('sla_rules').del();
-  await knex('users').del();
-  await knex('role_permissions').del();
-  await knex('roles').del();
-  await knex('teams').del();
-  await knex('carriers').del();
-  await knex('warehouses').del();
+  const existingUsers = await knex('users').count('* as c').first();
+  if (Number(existingUsers?.c) > 0) {
+    console.log('[seed] Users already exist, skipping seed');
+    return;
+  }
 
   const [adminRoleId, operatorRoleId, warehouseRoleId, readonlyRoleId] = await knex('roles').insert([
     { role_code: 'ADMIN', role_name: '管理员', description: '系统管理员，拥有全部权限' },
