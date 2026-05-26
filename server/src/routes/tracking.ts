@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
+import { requirePermission } from '../middleware/auth.js';
 import { applyTimeRangeFilters } from '../utils/queryHelpers.js';
 import XLSX from 'xlsx';
 
@@ -63,6 +64,9 @@ function computeRemainingDays(pickupTime: string | null, slaDays: number): numbe
 }
 
 tracking.get('/intransit', async (c) => {
+  if (!await requirePermission(c, 'tracking.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const page = Number(c.req.query('page')) || 1;
   const MAX_PAGE_SIZE = 200;
 const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
@@ -166,6 +170,9 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
 });
 
 tracking.get('/dashboard', async (c) => {
+  if (!await requirePermission(c, 'tracking.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -245,6 +252,9 @@ tracking.get('/dashboard', async (c) => {
 });
 
 tracking.get('/export', async (c) => {
+  if (!await requirePermission(c, 'tracking.export')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const fromWarehouse = c.req.query('from_warehouse');
   const toWarehouse = c.req.query('to_warehouse');
   const transportType = c.req.query('transport_type');
@@ -402,6 +412,9 @@ tracking.get('/export', async (c) => {
 });
 
 tracking.get('/sla-check', async (c) => {
+  if (!await requirePermission(c, 'tracking.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
 
   const inTransitOrders = await db('transfer_orders')

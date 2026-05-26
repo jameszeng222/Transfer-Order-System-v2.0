@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
+import { requirePermission } from '../middleware/auth.js';
 
 const freight = new Hono();
 
@@ -164,6 +165,9 @@ freight.get('/stats', async (c) => {
 });
 
 freight.get('/', async (c) => {
+  if (!await requirePermission(c, 'freight.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const page = Number(c.req.query('page')) || 1;
   const MAX_PAGE_SIZE = 200;
 const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
@@ -279,6 +283,9 @@ freight.get('/:id', async (c) => {
 });
 
 freight.post('/', zValidator('json', createFreightBillSchema), async (c) => {
+  if (!await requirePermission(c, 'freight.confirm')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const body = c.req.valid('json');
   const user = c.get('user');
 
@@ -401,6 +408,9 @@ freight.put('/:id', zValidator('json', updateFreightBillSchema), async (c) => {
 });
 
 freight.put('/:id/confirm', async (c) => {
+  if (!await requirePermission(c, 'freight.confirm')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const user = c.get('user');
 
@@ -458,6 +468,9 @@ freight.put('/:id/confirm', async (c) => {
 });
 
 freight.put('/:id/reconcile', async (c) => {
+  if (!await requirePermission(c, 'freight.reconcile')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const user = c.get('user');
 

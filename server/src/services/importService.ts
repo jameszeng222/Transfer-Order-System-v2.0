@@ -73,6 +73,22 @@ const LOGISTICS_MERGED_COLUMN_MAP: Record<string, string> = {
   '事件类型': 'event_type',
   '事件描述': 'event_desc',
   '位置': 'location',
+  '箱号': 'carton_no',
+  '长': 'carton_length',
+  '宽': 'carton_width',
+  '高': 'carton_height',
+  '实重': 'carton_weight',
+  '申报货值': 'declared_value',
+};
+
+const CARTON_TIME_MAP: Record<string, string> = {
+  depart_time: 'departure_time',
+  arrive_port_time: 'arrival_port_time',
+  clearance_time: 'customs_clearance_time',
+  last_mile_pickup_time: 'last_mile_pickup_time',
+  delivery_time: 'logistics_sign_time',
+  unload_time: 'unload_time',
+  shelve_time: 'shelf_time',
 };
 
 const FREIGHT_COLUMN_MAP: Record<string, string> = {
@@ -1218,6 +1234,47 @@ export async function importLogisticsEvents(buffer: ArrayBuffer, operator: strin
   };
 }
 
+function calcDaysDiff(start: string | null, end: string | null): number | null {
+  if (!start || !end) return null;
+  return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000 * 100) / 100;
+}
+
+function computeCartonTimeStats(carton: any, orderUpdates: Record<string, any>): Record<string, any> {
+  const stats: Record<string, any> = {};
+  const depart = orderUpdates.depart_time || carton.departure_time;
+  const sign = orderUpdates.delivery_time || carton.logistics_sign_time;
+  const unload = orderUpdates.unload_time || carton.unload_time;
+  const shelf = orderUpdates.shelve_time || carton.shelf_time;
+
+  const c2s = calcDaysDiff(depart, sign);
+  if (c2s !== null) stats.checkout_to_sign_days = c2s;
+  const s2s = calcDaysDiff(sign, shelf);
+  if (s2s !== null) stats.sign_to_shelf_days = s2s;
+  const u2s = calcDaysDiff(unload, shelf);
+  if (u2s !== null) stats.unload_to_shelf_days = u2s;
+  if (s2s !== null) stats.is_shelf_within_3days = s2s <= 3;
+  if (c2s !== null) {
+    stats.is_carton_within_11days = c2s <= 11;
+    stats.is_carton_within_7days = c2s <= 7;
+    stats.is_carton_within_4days = c2s <= 4;
+  }
+  return stats;
+}
+
+function computeExpectedDates(
+  order: any,
+  orderUpdates: Record<string, any>,
+): void {
+  const pickupTime = orderUpdates.pickup_time || order.pickup_time;
+  const timelineDays = orderUpdates.timeline_requirement_days ?? order.timeline_requirement_days;
+  if (pickupTime && timelineDays && !orderUpdates.expected_arrival_date) {
+    const pickupDate = new Date(pickupTime);
+    const arrivalDate = new Date(pickupDate.getTime() + Number(timelineDays) * 86400000);
+    orderUpdates.expected_arrival_date = arrivalDate.toISOString().slice(0, 10);
+    orderUpdates.expected_shelf_date = new Date(arrivalDate.getTime() + 3 * 86400000).toISOString().slice(0, 10);
+  }
+}
+
 export async function importLogisticsMerged(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
   const { headers, rows } = parseExcel(buffer);
   if (headers.length === 0 || rows.length === 0) {
@@ -1260,8 +1317,17 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
 
     const orders = await trx('transfer_orders').whereIn('inbound_order_no', inboundOrderNos);
     const orderMap: Map<string, any> = new Map(orders.map((o: any) => [o.inbound_order_no, o]));
+    const transferNos = orders.map((o: any) => o.transfer_no);
+
+    const allCartons = await trx('transfer_cartons').whereIn('transfer_no', transferNos);
+    const cartonMap: Map<string, any[]> = new Map();
+    for (const ctn of allCartons) {
+      if (!cartonMap.has(ctn.transfer_no)) cartonMap.set(ctn.transfer_no, []);
+      cartonMap.get(ctn.transfer_no)!.push(ctn);
+    }
 
     const orderUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const cartonUpdateList: { id: number; data: Record<string, any> }[] = [];
     const allTrackingEvents: any[] = [];
     const changeLogRecords: any[] = [];
 
@@ -1298,7 +1364,50 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
           orderUpdates.status = 'RECEIVED';
         }
 
+        computeExpectedDates(order, orderUpdates);
+
         orderUpdateList.push({ id: order.id, data: orderUpdates });
+
+        const orderCartons = cartonMap.get(order.transfer_no) || [];
+        const rowsWithCarton = groupRows.filter((r) => r.carton_no);
+        const rowsWithoutCarton = groupRows.filter((r) => !r.carton_no);
+        const cartonNoSet = new Set(rowsWithCarton.map((r) => String(r.carton_no)));
+
+        for (const ctn of orderCartons) {
+          const isTargeted = cartonNoSet.has(ctn.carton_no);
+          const isAllMode = rowsWithoutCarton.length > 0 && cartonNoSet.size === 0;
+          if (!isTargeted && !isAllMode) continue;
+
+          const ctnUpdates: Record<string, any> = { update_time: new Date().toISOString() };
+
+          for (const [orderField, cartonField] of Object.entries(CARTON_TIME_MAP)) {
+            const val = orderUpdates[orderField];
+            if (val !== undefined && val !== null) {
+              ctnUpdates[cartonField] = val;
+            }
+          }
+
+          if (isTargeted) {
+            const targetRows = groupRows.filter((r) => String(r.carton_no) === ctn.carton_no);
+            const specRow = targetRows[0];
+            if (specRow.carton_length !== undefined && specRow.carton_length !== null && specRow.carton_length !== '')
+              ctnUpdates.carton_length = Number(specRow.carton_length);
+            if (specRow.carton_width !== undefined && specRow.carton_width !== null && specRow.carton_width !== '')
+              ctnUpdates.carton_width = Number(specRow.carton_width);
+            if (specRow.carton_height !== undefined && specRow.carton_height !== null && specRow.carton_height !== '')
+              ctnUpdates.carton_height = Number(specRow.carton_height);
+            if (specRow.carton_weight !== undefined && specRow.carton_weight !== null && specRow.carton_weight !== '')
+              ctnUpdates.carton_weight = Number(specRow.carton_weight);
+            if (specRow.declared_value !== undefined && specRow.declared_value !== null && specRow.declared_value !== '')
+              ctnUpdates.declared_value = Number(specRow.declared_value);
+          }
+
+          Object.assign(ctnUpdates, computeCartonTimeStats(ctn, orderUpdates));
+
+          if (Object.keys(ctnUpdates).length > 1) {
+            cartonUpdateList.push({ id: ctn.id, data: ctnUpdates });
+          }
+        }
 
         for (const row of groupRows) {
           if (row.event_time && row.event_type) {
@@ -1340,6 +1449,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
     }
 
     await batchUpdateGrouped(trx, 'transfer_orders', orderUpdateList);
+    await batchUpdateGrouped(trx, 'transfer_cartons', cartonUpdateList);
     await batchInsert(trx, 'tracking_events', allTrackingEvents);
     await batchInsert(trx, 'change_logs', changeLogRecords);
   });

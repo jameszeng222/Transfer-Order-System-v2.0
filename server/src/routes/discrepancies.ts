@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
+import { requirePermission } from '../middleware/auth.js';
 import { applyTimeRangeFilters } from '../utils/queryHelpers.js';
 
 const discrepancies = new Hono();
@@ -28,6 +29,9 @@ const updateDiscrepancySchema = z.object({
 });
 
 discrepancies.post('/', zValidator('json', createDiscrepancySchema), async (c) => {
+  if (!await requirePermission(c, 'discrepancy.handle')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const data = c.req.valid('json');
   const user = c.get('user');
 
@@ -79,6 +83,9 @@ discrepancies.get('/stats', async (c) => {
 });
 
 discrepancies.get('/', async (c) => {
+  if (!await requirePermission(c, 'discrepancy.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const page = Number(c.req.query('page')) || 1;
   const MAX_PAGE_SIZE = 200;
 const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
@@ -145,6 +152,9 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
 });
 
 discrepancies.get('/:id', async (c) => {
+  if (!await requirePermission(c, 'discrepancy.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const item = await db('discrepancy_records')
     .leftJoin('transfer_orders', 'discrepancy_records.transfer_no', 'transfer_orders.transfer_no')
@@ -180,6 +190,9 @@ discrepancies.get('/:id', async (c) => {
 });
 
 discrepancies.put('/:id', zValidator('json', updateDiscrepancySchema), async (c) => {
+  if (!await requirePermission(c, 'discrepancy.handle')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const id = Number(c.req.param('id'));
   const body = c.req.valid('json');
   const user = c.get('user');

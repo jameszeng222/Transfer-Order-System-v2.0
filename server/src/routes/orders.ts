@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
 import { applyTimeRangeFilters } from '../utils/queryHelpers.js';
+import { requirePermission } from '../middleware/auth.js';
 import XLSX from 'xlsx';
 
 const STATUS_FLOW: Record<string, string[]> = {
@@ -47,6 +48,9 @@ const editOrderSchema = z.object({
 });
 
 orders.get('/', async (c) => {
+  if (!await requirePermission(c, 'order.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const page = Number(c.req.query('page')) || 1;
   const MAX_PAGE_SIZE = 200;
 const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
@@ -152,6 +156,9 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
 });
 
 orders.get('/export', async (c) => {
+  if (!await requirePermission(c, 'order.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const keyword = c.req.query('keyword') || '';
   const status = c.req.query('status');
   const fromWarehouse = c.req.query('from_warehouse');
@@ -257,6 +264,9 @@ orders.get('/export', async (c) => {
 });
 
 orders.get('/in-progress', async (c) => {
+  if (!await requirePermission(c, 'order.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const orders = await db('transfer_orders')
     .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
     .select(['transfer_no', 'inbound_order_no', 'status', 'from_warehouse', 'to_warehouse', 'transport_type', 'logistics_carrier', 'logistics_tracking_no', 'total_carton_count', 'total_freight_amount', 'is_reconciled'])
@@ -285,6 +295,9 @@ orders.get('/in-progress', async (c) => {
 const statusChangeWithTransferSchema = statusChangeSchema.extend({ transferNo: z.string().min(1) });
 
 orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async (c) => {
+  if (!await requirePermission(c, 'order.confirm')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const { transferNo, status: newStatus, remark } = c.req.valid('json');
   const user = c.get('user');
 
@@ -324,6 +337,52 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
 
   await db('transfer_orders').where({ transfer_no: transferNo }).update(updates);
 
+  const pickupTime = updates.pickup_time || order.pickup_time;
+  const timelineDays = order.timeline_requirement_days;
+  if (pickupTime && timelineDays && !order.expected_arrival_date) {
+    const pickupDate = new Date(pickupTime);
+    const arrivalDate = new Date(pickupDate.getTime() + Number(timelineDays) * 86400000);
+    await db('transfer_orders').where({ transfer_no: transferNo }).update({
+      expected_arrival_date: arrivalDate.toISOString().slice(0, 10),
+      expected_shelf_date: new Date(arrivalDate.getTime() + 3 * 86400000).toISOString().slice(0, 10),
+    });
+  }
+
+  if (updates.delivery_time || updates.shelve_time || updates.unload_time) {
+    const cartons = await db('transfer_cartons').where({ transfer_no: transferNo });
+    for (const ctn of cartons) {
+      const ctnUpdates: Record<string, any> = {};
+      const depart = ctn.departure_time;
+      const sign = updates.delivery_time || ctn.logistics_sign_time;
+      const unload = updates.unload_time || ctn.unload_time;
+      const shelf = updates.shelve_time || ctn.shelf_time;
+
+      for (const [orderField, cartonField] of Object.entries({
+        depart_time: 'departure_time', arrive_port_time: 'arrival_port_time',
+        clearance_time: 'customs_clearance_time', last_mile_pickup_time: 'last_mile_pickup_time',
+        delivery_time: 'logistics_sign_time', unload_time: 'unload_time', shelve_time: 'shelf_time',
+      })) {
+        if ((updates as any)[orderField]) ctnUpdates[cartonField] = (updates as any)[orderField];
+      }
+      if (depart && sign) {
+        ctnUpdates.checkout_to_sign_days = Math.round((new Date(sign).getTime() - new Date(depart).getTime()) / 86400000 * 100) / 100;
+        ctnUpdates.is_carton_within_11days = ctnUpdates.checkout_to_sign_days <= 11;
+        ctnUpdates.is_carton_within_7days = ctnUpdates.checkout_to_sign_days <= 7;
+        ctnUpdates.is_carton_within_4days = ctnUpdates.checkout_to_sign_days <= 4;
+      }
+      if (sign && shelf) {
+        ctnUpdates.sign_to_shelf_days = Math.round((new Date(shelf).getTime() - new Date(sign).getTime()) / 86400000 * 100) / 100;
+        ctnUpdates.is_shelf_within_3days = ctnUpdates.sign_to_shelf_days <= 3;
+      }
+      if (unload && shelf) {
+        ctnUpdates.unload_to_shelf_days = Math.round((new Date(shelf).getTime() - new Date(unload).getTime()) / 86400000 * 100) / 100;
+      }
+      if (Object.keys(ctnUpdates).length > 0) {
+        await db('transfer_cartons').where({ id: ctn.id }).update(ctnUpdates);
+      }
+    }
+  }
+
   await db('change_logs').insert({
     record_type: 'TRANSFER_ORDER',
     record_id: order.id,
@@ -346,6 +405,9 @@ orders.put('/batch-status', zValidator('json', z.object({
   status: z.enum(['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED', 'COMPLETED', 'CANCELLED']),
   remark: z.string().optional(),
 })), async (c) => {
+  if (!await requirePermission(c, 'order.confirm')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const { transferNos, status: newStatus, remark } = c.req.valid('json');
   const user = c.get('user');
 
@@ -379,7 +441,7 @@ orders.put('/batch-status', zValidator('json', z.object({
     if (newStatus === 'RECEIVED' && !order.delivery_time) updates.delivery_time = now;
     if (newStatus === 'SHELVED' && !order.shelve_time) updates.shelve_time = now;
 
-    validUpdates.push({ transferNo, updates });
+    validUpdates.push({ transferNo, updates, order });
     changeLogEntries.push({
       record_type: 'TRANSFER_ORDER',
       record_id: order.id,
@@ -409,6 +471,51 @@ orders.put('/batch-status', zValidator('json', z.object({
     if (changeLogEntries.length > 0) {
       await db('change_logs').insert(changeLogEntries);
     }
+
+    for (const { transferNo, updates, order } of validUpdates) {
+      const pickupTime = updates.pickup_time || order.pickup_time;
+      const timelineDays = order.timeline_requirement_days;
+      if (pickupTime && timelineDays && !order.expected_arrival_date) {
+        const pickupDate = new Date(pickupTime);
+        const arrivalDate = new Date(pickupDate.getTime() + Number(timelineDays) * 86400000);
+        await db('transfer_orders').where({ transfer_no: transferNo }).update({
+          expected_arrival_date: arrivalDate.toISOString().slice(0, 10),
+          expected_shelf_date: new Date(arrivalDate.getTime() + 3 * 86400000).toISOString().slice(0, 10),
+        });
+      }
+
+      if (updates.delivery_time || updates.shelve_time || updates.unload_time) {
+        const cartons = await db('transfer_cartons').where({ transfer_no: transferNo });
+        for (const ctn of cartons) {
+          const ctnUpdates: Record<string, any> = {};
+          const depart = ctn.departure_time;
+          const sign = updates.delivery_time || ctn.logistics_sign_time;
+          const unload = updates.unload_time || ctn.unload_time;
+          const shelf = updates.shelve_time || ctn.shelf_time;
+          for (const [of, cf] of Object.entries({
+            depart_time: 'departure_time', arrive_port_time: 'arrival_port_time',
+            clearance_time: 'customs_clearance_time', last_mile_pickup_time: 'last_mile_pickup_time',
+            delivery_time: 'logistics_sign_time', unload_time: 'unload_time', shelve_time: 'shelf_time',
+          })) { if ((updates as any)[of]) ctnUpdates[cf] = (updates as any)[of]; }
+          if (depart && sign) {
+            ctnUpdates.checkout_to_sign_days = Math.round((new Date(sign).getTime() - new Date(depart).getTime()) / 86400000 * 100) / 100;
+            ctnUpdates.is_carton_within_11days = ctnUpdates.checkout_to_sign_days <= 11;
+            ctnUpdates.is_carton_within_7days = ctnUpdates.checkout_to_sign_days <= 7;
+            ctnUpdates.is_carton_within_4days = ctnUpdates.checkout_to_sign_days <= 4;
+          }
+          if (sign && shelf) {
+            ctnUpdates.sign_to_shelf_days = Math.round((new Date(shelf).getTime() - new Date(sign).getTime()) / 86400000 * 100) / 100;
+            ctnUpdates.is_shelf_within_3days = ctnUpdates.sign_to_shelf_days <= 3;
+          }
+          if (unload && shelf) {
+            ctnUpdates.unload_to_shelf_days = Math.round((new Date(shelf).getTime() - new Date(unload).getTime()) / 86400000 * 100) / 100;
+          }
+          if (Object.keys(ctnUpdates).length > 0) {
+            await db('transfer_cartons').where({ id: ctn.id }).update(ctnUpdates);
+          }
+        }
+      }
+    }
   }
 
   return c.json({ success: true, data: results });
@@ -417,6 +524,9 @@ orders.put('/batch-status', zValidator('json', z.object({
 const editOrderWithTransferSchema = editOrderSchema.extend({ transferNo: z.string().min(1) });
 
 orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) => {
+  if (!await requirePermission(c, 'order.edit')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   const { transferNo, ...body } = c.req.valid('json');
   const user = c.get('user');
 
