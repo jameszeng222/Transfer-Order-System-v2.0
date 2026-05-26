@@ -51,16 +51,17 @@ async function generateBillNo(): Promise<string> {
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
-async function allocateFreight(transferNo: string, user?: { username: string }) {
-  const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
+async function allocateFreight(transferNo: string, user?: { username: string }, trx?: any) {
+  const dbConn = trx || db;
+  const order = await dbConn('transfer_orders').where({ transfer_no: transferNo }).first();
   if (!order) return;
 
-  const bills = await db('freight_bills')
+  const bills = await dbConn('freight_bills')
     .where({ transfer_no: transferNo, bill_status: 'CONFIRMED' });
 
   const totalFreightCny = bills.reduce((sum: number, b: any) => sum + Number(b.total_amount_cny || 0), 0);
 
-  const items = await db('transfer_order_items')
+  const items = await dbConn('transfer_order_items')
     .where({ transfer_no: transferNo })
     .where('outbound_qty', '>', 0);
 
@@ -119,18 +120,18 @@ async function allocateFreight(transferNo: string, user?: { username: string }) 
 
   const now = new Date().toISOString();
   for (const alloc of allocations) {
-    await db('transfer_order_items').where({ id: alloc.id }).update({
+    await dbConn('transfer_order_items').where({ id: alloc.id }).update({
       freight_cost_total: alloc.freight_cost_total,
       freight_cost_per_unit: alloc.freight_cost_per_unit,
     });
   }
 
-  await db('transfer_orders').where({ transfer_no: transferNo }).update({
+  await dbConn('transfer_orders').where({ transfer_no: transferNo }).update({
     total_freight_amount: totalFreightCny,
     update_time: now,
   });
 
-  await db('change_logs').insert({
+  await dbConn('change_logs').insert({
     record_type: 'freight_bill',
     record_id: order.id,
     transfer_no: transferNo,
@@ -164,7 +165,8 @@ freight.get('/stats', async (c) => {
 
 freight.get('/', async (c) => {
   const page = Number(c.req.query('page')) || 1;
-  const pageSize = Number(c.req.query('pageSize')) || 20;
+  const MAX_PAGE_SIZE = 200;
+const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const billStatus = c.req.query('bill_status');
   const logisticsCarrier = c.req.query('logistics_carrier');
   const transferNo = c.req.query('transfer_no');
@@ -402,57 +404,57 @@ freight.put('/:id/confirm', async (c) => {
   const id = Number(c.req.param('id'));
   const user = c.get('user');
 
-  const existing = await db('freight_bills').where({ id }).first();
-  if (!existing) {
-    return c.json({ success: false, error: 'Freight bill not found' }, 404);
-  }
-
-  if (existing.bill_status !== 'PENDING') {
-    return c.json({ success: false, error: '只有待确认状态的账单可以确认' }, 400);
-  }
-
-  const now = new Date().toISOString();
-
-  await db('freight_bills').where({ id }).update({
-    bill_status: 'CONFIRMED',
-    confirm_time: now,
-    confirmer: user?.username || 'unknown',
-    update_time: now,
-  });
-
-  await db('change_logs').insert({
-    record_type: 'freight_bill',
-    record_id: existing.id,
-    transfer_no: existing.transfer_no,
-    field_name: 'freight_bill.status',
-    old_value: existing.bill_status,
-    new_value: 'CONFIRMED',
-    change_source: 'MANUAL',
-    operator: user?.username || 'unknown',
-    change_time: now,
-  });
-
   try {
-    await allocateFreight(existing.transfer_no, user);
+    const result = await db.transaction(async (trx) => {
+      const existing = await trx('freight_bills').where({ id }).first();
+      if (!existing) {
+        throw new Error('NOT_FOUND');
+      }
+      if (existing.bill_status !== 'PENDING') {
+        throw new Error('NOT_PENDING');
+      }
+
+      const now = new Date().toISOString();
+
+      await trx('freight_bills').where({ id }).update({
+        bill_status: 'CONFIRMED',
+        confirm_time: now,
+        confirmer: user?.username || 'system',
+        update_time: now,
+      });
+
+      await trx('change_logs').insert({
+        record_type: 'freight_bill',
+        record_id: existing.id,
+        transfer_no: existing.transfer_no,
+        field_name: 'freight_bill.status',
+        old_value: existing.bill_status,
+        new_value: 'CONFIRMED',
+        change_source: 'MANUAL',
+        operator: user?.username || 'system',
+        change_time: now,
+      });
+
+      await allocateFreight(existing.transfer_no, user, trx);
+
+      return await trx('freight_bills')
+        .leftJoin('transfer_orders', 'freight_bills.transfer_no', 'transfer_orders.transfer_no')
+        .select(
+          'freight_bills.*',
+          'transfer_orders.inbound_order_no',
+          'transfer_orders.from_warehouse',
+          'transfer_orders.to_warehouse'
+        )
+        .where('freight_bills.id', id)
+        .first();
+    });
+
+    return c.json({ success: true, data: result });
   } catch (err: any) {
-    return c.json({
-      success: false,
-      error: `账单已确认，但运费分摊失败: ${err.message}`,
-    }, 400);
+    if (err.message === 'NOT_FOUND') return c.json({ success: false, error: 'Freight bill not found' }, 404);
+    if (err.message === 'NOT_PENDING') return c.json({ success: false, error: '只有待确认状态的账单可以确认' }, 400);
+    return c.json({ success: false, error: `确认失败: ${err.message}` }, 400);
   }
-
-  const updated = await db('freight_bills')
-    .leftJoin('transfer_orders', 'freight_bills.transfer_no', 'transfer_orders.transfer_no')
-    .select(
-      'freight_bills.*',
-      'transfer_orders.inbound_order_no',
-      'transfer_orders.from_warehouse',
-      'transfer_orders.to_warehouse'
-    )
-    .where('freight_bills.id', id)
-    .first();
-
-  return c.json({ success: true, data: updated });
 });
 
 freight.put('/:id/reconcile', async (c) => {

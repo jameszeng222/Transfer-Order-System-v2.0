@@ -276,6 +276,27 @@ async function generateTransferNo(trx: any): Promise<string> {
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
+async function batchInsert(trx: any, tableName: string, records: any[], batchSize = 500): Promise<void> {
+  for (let i = 0; i < records.length; i += batchSize) {
+    const batch = records.slice(i, i + batchSize);
+    if (batch.length > 0) {
+      await trx(tableName).insert(batch);
+    }
+  }
+}
+
+async function batchUpdateGrouped(trx: any, tableName: string, updates: { id: number; data: Record<string, any> }[]): Promise<void> {
+  const groups = new Map<string, { data: Record<string, any>; ids: number[] }>();
+  for (const u of updates) {
+    const key = JSON.stringify(u.data);
+    if (!groups.has(key)) groups.set(key, { data: u.data, ids: [] });
+    groups.get(key)!.ids.push(u.id);
+  }
+  for (const [, group] of groups) {
+    await trx(tableName).whereIn('id', group.ids).update(group.data);
+  }
+}
+
 async function processOrderGroup(
   trx: any,
   inboundOrderNo: string,
@@ -377,9 +398,12 @@ async function createSubRecords(
     cartonGroups[key].push(row);
   }
 
+  const allCartons: any[] = [];
+  const allCartonItems: any[] = [];
+
   for (const [cartonNo, cartonRows] of Object.entries(cartonGroups)) {
     const firstCartonRow = cartonRows[0];
-    await trx('transfer_cartons').insert({
+    allCartons.push({
       transfer_no: transferNo,
       inbound_order_no: inboundOrderNo,
       carton_no: cartonNo,
@@ -389,7 +413,7 @@ async function createSubRecords(
     });
 
     for (const row of cartonRows) {
-      await trx('transfer_carton_items').insert({
+      allCartonItems.push({
         carton_no: cartonNo,
         transfer_no: transferNo,
         inbound_order_no: inboundOrderNo,
@@ -402,6 +426,9 @@ async function createSubRecords(
     }
   }
 
+  await batchInsert(trx, 'transfer_cartons', allCartons);
+  await batchInsert(trx, 'transfer_carton_items', allCartonItems);
+
   const skuGroups: Record<string, ParsedRow[]> = {};
   for (const row of rows) {
     const key = row.sku_code;
@@ -409,10 +436,11 @@ async function createSubRecords(
     skuGroups[key].push(row);
   }
 
+  const allOrderItems: any[] = [];
   for (const [skuCode, skuRows] of Object.entries(skuGroups)) {
     const totalExpectedQty = skuRows.reduce((sum, r) => sum + (Number(r.expected_qty) || 0), 0);
     const firstSkuRow = skuRows[0];
-    await trx('transfer_order_items').insert({
+    allOrderItems.push({
       transfer_no: transferNo,
       inbound_order_no: inboundOrderNo,
       sku_code: skuCode,
@@ -423,6 +451,7 @@ async function createSubRecords(
       shelf_qty: 0,
     });
   }
+  await batchInsert(trx, 'transfer_order_items', allOrderItems);
 
   if (await trx('transfer_orders').where({ transfer_no: transferNo }).first()) {
     const skuSet = new Set(rows.map((r) => r.sku_code));
@@ -451,11 +480,19 @@ async function mergeSubRecords(
     cartonGroups[key].push(row);
   }
 
+  const cartonNos = Object.keys(cartonGroups);
+  const existingCartons = await trx('transfer_cartons')
+    .where({ transfer_no: transferNo })
+    .whereIn('carton_no', cartonNos);
+  const existingCartonMap: Map<string, any> = new Map(existingCartons.map((c: any) => [c.carton_no, c]));
+
+  const newCartons: any[] = [];
+  const cartonUpdateList: { id: number; data: Record<string, any> }[] = [];
+  const allCartonItems: any[] = [];
+
   for (const [cartonNo, cartonRows] of Object.entries(cartonGroups)) {
     const firstCartonRow = cartonRows[0];
-    const existingCarton = await trx('transfer_cartons')
-      .where({ transfer_no: transferNo, carton_no: cartonNo })
-      .first();
+    const existingCarton = existingCartonMap.get(cartonNo);
 
     if (existingCarton) {
       const cartonUpdates: Record<string, any> = { update_time: new Date().toISOString() };
@@ -463,10 +500,10 @@ async function mergeSubRecords(
         cartonUpdates.logistics_tracking_no = firstCartonRow.logistics_tracking_no;
       }
       if (Object.keys(cartonUpdates).length > 1) {
-        await trx('transfer_cartons').where({ id: existingCarton.id }).update(cartonUpdates);
+        cartonUpdateList.push({ id: existingCarton.id, data: cartonUpdates });
       }
     } else {
-      await trx('transfer_cartons').insert({
+      newCartons.push({
         transfer_no: transferNo,
         inbound_order_no: inboundOrderNo,
         carton_no: cartonNo,
@@ -476,12 +513,8 @@ async function mergeSubRecords(
       });
     }
 
-    await trx('transfer_carton_items')
-      .where({ transfer_no: transferNo, carton_no: cartonNo })
-      .del();
-
     for (const row of cartonRows) {
-      await trx('transfer_carton_items').insert({
+      allCartonItems.push({
         carton_no: cartonNo,
         transfer_no: transferNo,
         inbound_order_no: inboundOrderNo,
@@ -494,6 +527,15 @@ async function mergeSubRecords(
     }
   }
 
+  await trx('transfer_carton_items')
+    .where({ transfer_no: transferNo })
+    .whereIn('carton_no', cartonNos)
+    .del();
+
+  await batchInsert(trx, 'transfer_cartons', newCartons);
+  await batchUpdateGrouped(trx, 'transfer_cartons', cartonUpdateList);
+  await batchInsert(trx, 'transfer_carton_items', allCartonItems);
+
   const skuGroups: Record<string, ParsedRow[]> = {};
   for (const row of rows) {
     const key = row.sku_code;
@@ -501,12 +543,19 @@ async function mergeSubRecords(
     skuGroups[key].push(row);
   }
 
+  const skuCodes = Object.keys(skuGroups);
+  const existingItems = await trx('transfer_order_items')
+    .where({ transfer_no: transferNo })
+    .whereIn('sku_code', skuCodes);
+  const existingItemMap: Map<string, any> = new Map(existingItems.map((i: any) => [i.sku_code, i]));
+
+  const newOrderItems: any[] = [];
+  const itemUpdateList: { id: number; data: Record<string, any> }[] = [];
+
   for (const [skuCode, skuRows] of Object.entries(skuGroups)) {
     const totalExpectedQty = skuRows.reduce((sum, r) => sum + (Number(r.expected_qty) || 0), 0);
     const firstSkuRow = skuRows[0];
-    const existingItem = await trx('transfer_order_items')
-      .where({ transfer_no: transferNo, sku_code: skuCode })
-      .first();
+    const existingItem = existingItemMap.get(skuCode);
 
     if (existingItem) {
       const itemUpdates: Record<string, any> = {};
@@ -517,10 +566,10 @@ async function mergeSubRecords(
         itemUpdates.expected_qty = totalExpectedQty;
       }
       if (Object.keys(itemUpdates).length > 0) {
-        await trx('transfer_order_items').where({ id: existingItem.id }).update(itemUpdates);
+        itemUpdateList.push({ id: existingItem.id, data: itemUpdates });
       }
     } else {
-      await trx('transfer_order_items').insert({
+      newOrderItems.push({
         transfer_no: transferNo,
         inbound_order_no: inboundOrderNo,
         sku_code: skuCode,
@@ -532,6 +581,9 @@ async function mergeSubRecords(
       });
     }
   }
+
+  await batchInsert(trx, 'transfer_order_items', newOrderItems);
+  await batchUpdateGrouped(trx, 'transfer_order_items', itemUpdateList);
 
   const allCartons = await trx('transfer_cartons').where({ transfer_no: transferNo });
   const allItems = await trx('transfer_order_items').where({ transfer_no: transferNo });
@@ -676,9 +728,29 @@ export async function importOutboundReturn(buffer: ArrayBuffer, operator: string
   const orderErrors: RowError[] = [];
 
   await db.transaction(async (trx) => {
+    const inboundOrderNos = Object.keys(orderGroups);
+    if (inboundOrderNos.length === 0) return;
+
+    const orders = await trx('transfer_orders').whereIn('inbound_order_no', inboundOrderNos);
+    const orderMap: Map<string, any> = new Map(orders.map((o: any) => [o.inbound_order_no, o]));
+
+    const transferNos = orders.map((o: any) => o.transfer_no);
+    const allItems = transferNos.length > 0
+      ? await trx('transfer_order_items').whereIn('transfer_no', transferNos)
+      : [];
+    const itemMap = new Map<string, any>();
+    for (const item of allItems) {
+      itemMap.set(`${item.transfer_no}:${item.sku_code}`, item);
+    }
+
+    const itemUpdateList: { id: number; outbound_qty: number; outbound_diff: number }[] = [];
+    const discrepancyRecords: any[] = [];
+    const orderUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const changeLogRecords: any[] = [];
+
     for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
       try {
-        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        const order = orderMap.get(inboundOrderNo);
         if (!order) {
           for (const row of groupRows) {
             orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
@@ -693,9 +765,8 @@ export async function importOutboundReturn(buffer: ArrayBuffer, operator: string
 
         let hasOutboundQty = false;
         for (const row of groupRows) {
-          const item = await trx('transfer_order_items')
-            .where({ transfer_no: order.transfer_no, sku_code: String(row.sku_code) })
-            .first();
+          const itemKey = `${order.transfer_no}:${String(row.sku_code)}`;
+          const item = itemMap.get(itemKey);
           if (!item) {
             orderErrors.push({ row: row._rowIndex, message: `SKU ${row.sku_code} 在调拨单 ${order.transfer_no} 中不存在` });
             continue;
@@ -704,15 +775,12 @@ export async function importOutboundReturn(buffer: ArrayBuffer, operator: string
           const outboundQty = row.outbound_qty;
           const outboundDiff = outboundQty - item.expected_qty;
 
-          await trx('transfer_order_items').where({ id: item.id }).update({
-            outbound_qty: outboundQty,
-            outbound_diff: outboundDiff,
-          });
+          itemUpdateList.push({ id: item.id, outbound_qty: outboundQty, outbound_diff: outboundDiff });
 
           if (outboundQty > 0) hasOutboundQty = true;
 
           if (outboundDiff !== 0) {
-            await trx('discrepancy_records').insert({
+            discrepancyRecords.push({
               transfer_no: order.transfer_no,
               sku_code: String(row.sku_code),
               discrepancy_category: 'QUANTITY_DIFF',
@@ -732,9 +800,9 @@ export async function importOutboundReturn(buffer: ArrayBuffer, operator: string
           }
         }
 
-        await trx('transfer_orders').where({ id: order.id }).update(orderUpdates);
+        orderUpdateList.push({ id: order.id, data: orderUpdates });
 
-        await trx('change_logs').insert({
+        changeLogRecords.push({
           record_type: 'transfer_order',
           record_id: order.id,
           transfer_no: order.transfer_no,
@@ -753,6 +821,17 @@ export async function importOutboundReturn(buffer: ArrayBuffer, operator: string
         }
       }
     }
+
+    for (const update of itemUpdateList) {
+      await trx('transfer_order_items').where({ id: update.id }).update({
+        outbound_qty: update.outbound_qty,
+        outbound_diff: update.outbound_diff,
+      });
+    }
+
+    await batchInsert(trx, 'discrepancy_records', discrepancyRecords);
+    await batchUpdateGrouped(trx, 'transfer_orders', orderUpdateList);
+    await batchInsert(trx, 'change_logs', changeLogRecords);
   });
 
   const allErrors = [...errors, ...orderErrors];
@@ -800,9 +879,29 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
   const orderErrors: RowError[] = [];
 
   await db.transaction(async (trx) => {
+    const inboundOrderNos = Object.keys(orderGroups);
+    if (inboundOrderNos.length === 0) return;
+
+    const orders = await trx('transfer_orders').whereIn('inbound_order_no', inboundOrderNos);
+    const orderMap: Map<string, any> = new Map(orders.map((o: any) => [o.inbound_order_no, o]));
+
+    const transferNos = orders.map((o: any) => o.transfer_no);
+    const allItems = transferNos.length > 0
+      ? await trx('transfer_order_items').whereIn('transfer_no', transferNos)
+      : [];
+    const itemMap = new Map<string, any>();
+    for (const item of allItems) {
+      itemMap.set(`${item.transfer_no}:${item.sku_code}`, item);
+    }
+
+    const itemUpdateList: { id: number; inbound_qty: number; inbound_diff: number; total_diff: number }[] = [];
+    const discrepancyRecords: any[] = [];
+    const orderUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const changeLogRecords: any[] = [];
+
     for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
       try {
-        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        const order = orderMap.get(inboundOrderNo);
         if (!order) {
           for (const row of groupRows) {
             orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
@@ -814,9 +913,8 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
         let hasInboundQty = false;
 
         for (const row of groupRows) {
-          const item = await trx('transfer_order_items')
-            .where({ transfer_no: order.transfer_no, sku_code: String(row.sku_code) })
-            .first();
+          const itemKey = `${order.transfer_no}:${String(row.sku_code)}`;
+          const item = itemMap.get(itemKey);
           if (!item) {
             orderErrors.push({ row: row._rowIndex, message: `SKU ${row.sku_code} 在调拨单 ${order.transfer_no} 中不存在` });
             continue;
@@ -826,16 +924,12 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
           const inboundDiff = inboundQty - (item.outbound_qty || 0);
           const totalDiff = inboundQty - item.expected_qty;
 
-          await trx('transfer_order_items').where({ id: item.id }).update({
-            inbound_qty: inboundQty,
-            inbound_diff: inboundDiff,
-            total_diff: totalDiff,
-          });
+          itemUpdateList.push({ id: item.id, inbound_qty: inboundQty, inbound_diff: inboundDiff, total_diff: totalDiff });
 
           if (inboundQty > 0) hasInboundQty = true;
 
           if (totalDiff !== 0) {
-            await trx('discrepancy_records').insert({
+            discrepancyRecords.push({
               transfer_no: order.transfer_no,
               sku_code: String(row.sku_code),
               discrepancy_category: 'QUANTITY_DIFF',
@@ -853,9 +947,9 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
           orderUpdates.delivery_time = new Date().toISOString();
         }
 
-        await trx('transfer_orders').where({ id: order.id }).update(orderUpdates);
+        orderUpdateList.push({ id: order.id, data: orderUpdates });
 
-        await trx('change_logs').insert({
+        changeLogRecords.push({
           record_type: 'transfer_order',
           record_id: order.id,
           transfer_no: order.transfer_no,
@@ -874,6 +968,18 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
         }
       }
     }
+
+    for (const update of itemUpdateList) {
+      await trx('transfer_order_items').where({ id: update.id }).update({
+        inbound_qty: update.inbound_qty,
+        inbound_diff: update.inbound_diff,
+        total_diff: update.total_diff,
+      });
+    }
+
+    await batchInsert(trx, 'discrepancy_records', discrepancyRecords);
+    await batchUpdateGrouped(trx, 'transfer_orders', orderUpdateList);
+    await batchInsert(trx, 'change_logs', changeLogRecords);
   });
 
   const allErrors = [...errors, ...orderErrors];
@@ -926,9 +1032,18 @@ export async function importLogisticsInfo(buffer: ArrayBuffer, operator: string)
   ];
 
   await db.transaction(async (trx) => {
+    const inboundOrderNos = Object.keys(orderGroups);
+    if (inboundOrderNos.length === 0) return;
+
+    const orders = await trx('transfer_orders').whereIn('inbound_order_no', inboundOrderNos);
+    const orderMap: Map<string, any> = new Map(orders.map((o: any) => [o.inbound_order_no, o]));
+
+    const orderUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const changeLogRecords: any[] = [];
+
     for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
       try {
-        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        const order = orderMap.get(inboundOrderNo);
         if (!order) {
           for (const row of groupRows) {
             orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
@@ -959,9 +1074,9 @@ export async function importLogisticsInfo(buffer: ArrayBuffer, operator: string)
           orderUpdates.status = 'RECEIVED';
         }
 
-        await trx('transfer_orders').where({ id: order.id }).update(orderUpdates);
+        orderUpdateList.push({ id: order.id, data: orderUpdates });
 
-        await trx('change_logs').insert({
+        changeLogRecords.push({
           record_type: 'transfer_order',
           record_id: order.id,
           transfer_no: order.transfer_no,
@@ -980,6 +1095,9 @@ export async function importLogisticsInfo(buffer: ArrayBuffer, operator: string)
         }
       }
     }
+
+    await batchUpdateGrouped(trx, 'transfer_orders', orderUpdateList);
+    await batchInsert(trx, 'change_logs', changeLogRecords);
   });
 
   const allErrors = [...errors, ...orderErrors];
@@ -1027,9 +1145,19 @@ export async function importLogisticsEvents(buffer: ArrayBuffer, operator: strin
   const orderErrors: RowError[] = [];
 
   await db.transaction(async (trx) => {
+    const inboundOrderNos = Object.keys(orderGroups);
+    if (inboundOrderNos.length === 0) return;
+
+    const orders = await trx('transfer_orders').whereIn('inbound_order_no', inboundOrderNos);
+    const orderMap: Map<string, any> = new Map(orders.map((o: any) => [o.inbound_order_no, o]));
+
+    const allTrackingEvents: any[] = [];
+    const orderUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const changeLogRecords: any[] = [];
+
     for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
       try {
-        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        const order = orderMap.get(inboundOrderNo);
         if (!order) {
           for (const row of groupRows) {
             orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
@@ -1039,7 +1167,7 @@ export async function importLogisticsEvents(buffer: ArrayBuffer, operator: strin
 
         for (const row of groupRows) {
           const eventTime = parseExcelDate(row.event_time) || new Date().toISOString();
-          await trx('tracking_events').insert({
+          allTrackingEvents.push({
             transfer_no: order.transfer_no,
             event_time: eventTime,
             event_type: row.event_type,
@@ -1050,11 +1178,9 @@ export async function importLogisticsEvents(buffer: ArrayBuffer, operator: strin
           });
         }
 
-        await trx('transfer_orders').where({ id: order.id }).update({
-          update_time: new Date().toISOString(),
-        });
+        orderUpdateList.push({ id: order.id, data: { update_time: new Date().toISOString() } });
 
-        await trx('change_logs').insert({
+        changeLogRecords.push({
           record_type: 'transfer_order',
           record_id: order.id,
           transfer_no: order.transfer_no,
@@ -1073,6 +1199,10 @@ export async function importLogisticsEvents(buffer: ArrayBuffer, operator: strin
         }
       }
     }
+
+    await batchInsert(trx, 'tracking_events', allTrackingEvents);
+    await batchUpdateGrouped(trx, 'transfer_orders', orderUpdateList);
+    await batchInsert(trx, 'change_logs', changeLogRecords);
   });
 
   const allErrors = [...errors, ...orderErrors];
@@ -1125,9 +1255,19 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
   ];
 
   await db.transaction(async (trx) => {
+    const inboundOrderNos = Object.keys(orderGroups);
+    if (inboundOrderNos.length === 0) return;
+
+    const orders = await trx('transfer_orders').whereIn('inbound_order_no', inboundOrderNos);
+    const orderMap: Map<string, any> = new Map(orders.map((o: any) => [o.inbound_order_no, o]));
+
+    const orderUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const allTrackingEvents: any[] = [];
+    const changeLogRecords: any[] = [];
+
     for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
       try {
-        const order = await trx('transfer_orders').where({ inbound_order_no: inboundOrderNo }).first();
+        const order = orderMap.get(inboundOrderNo);
         if (!order) {
           for (const row of groupRows) {
             orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
@@ -1158,7 +1298,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
           orderUpdates.status = 'RECEIVED';
         }
 
-        await trx('transfer_orders').where({ id: order.id }).update(orderUpdates);
+        orderUpdateList.push({ id: order.id, data: orderUpdates });
 
         for (const row of groupRows) {
           if (row.event_time && row.event_type) {
@@ -1167,7 +1307,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
               eventType = LOGISTICS_EVENT_TYPE_MAP[eventType];
             }
             const eventTime = parseExcelDate(row.event_time) || new Date().toISOString();
-            await trx('tracking_events').insert({
+            allTrackingEvents.push({
               transfer_no: order.transfer_no,
               event_time: eventTime,
               event_type: eventType,
@@ -1179,7 +1319,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
           }
         }
 
-        await trx('change_logs').insert({
+        changeLogRecords.push({
           record_type: 'transfer_order',
           record_id: order.id,
           transfer_no: order.transfer_no,
@@ -1198,6 +1338,10 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
         }
       }
     }
+
+    await batchUpdateGrouped(trx, 'transfer_orders', orderUpdateList);
+    await batchInsert(trx, 'tracking_events', allTrackingEvents);
+    await batchInsert(trx, 'change_logs', changeLogRecords);
   });
 
   const allErrors = [...errors, ...orderErrors];
@@ -1236,19 +1380,31 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
   const orderErrors: RowError[] = [];
 
   await db.transaction(async (trx) => {
+    if (validRows.length === 0) return;
+
+    const inboundOrderNos = validRows.map((r) => String(r.inbound_order_no));
+    const orders = await trx('transfer_orders').whereIn('inbound_order_no', inboundOrderNos);
+    const orderMap: Map<string, any> = new Map(orders.map((o: any) => [o.inbound_order_no, o]));
+
+    const transferNos = orders.map((o: any) => o.transfer_no);
+    const existingBills = transferNos.length > 0
+      ? await trx('freight_bills').whereIn('transfer_no', transferNos).andWhere({ bill_status: 'PENDING' })
+      : [];
+    const billMap: Map<string, any> = new Map(existingBills.map((b: any) => [b.transfer_no, b]));
+
+    const newBills: any[] = [];
+    const billUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const changeLogRecords: any[] = [];
+
     for (const row of validRows) {
       try {
-        const order = await trx('transfer_orders')
-          .where({ inbound_order_no: String(row.inbound_order_no) })
-          .first();
+        const order = orderMap.get(String(row.inbound_order_no));
         if (!order) {
           orderErrors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 未找到对应调拨单` });
           continue;
         }
 
-        const existingBill = await trx('freight_bills')
-          .where({ transfer_no: order.transfer_no, bill_status: 'PENDING' })
-          .first();
+        const existingBill = billMap.get(order.transfer_no);
 
         const freightFee = row.freight_fee !== undefined && row.freight_fee !== null && row.freight_fee !== '' ? Number(row.freight_fee) : undefined;
         const customsFee = row.customs_fee !== undefined && row.customs_fee !== null && row.customs_fee !== '' ? Number(row.customs_fee) : undefined;
@@ -1272,9 +1428,9 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
           updates.total_amount = Math.round((fFee + cFee + oFee) * 100) / 100;
           updates.total_amount_cny = Math.round(updates.total_amount * eRate * 100) / 100;
 
-          await trx('freight_bills').where({ id: existingBill.id }).update(updates);
+          billUpdateList.push({ id: existingBill.id, data: updates });
 
-          await trx('change_logs').insert({
+          changeLogRecords.push({
             record_type: 'transfer_order',
             record_id: order.id,
             transfer_no: order.transfer_no,
@@ -1312,7 +1468,7 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
           const billNo = `${prefix}${String(seq).padStart(4, '0')}`;
 
           const now = new Date().toISOString();
-          await trx('freight_bills').insert({
+          newBills.push({
             bill_no: billNo,
             transfer_no: order.transfer_no,
             freight_fee: fFee,
@@ -1327,7 +1483,7 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
             update_time: now,
           });
 
-          await trx('change_logs').insert({
+          changeLogRecords.push({
             record_type: 'transfer_order',
             record_id: order.id,
             transfer_no: order.transfer_no,
@@ -1345,6 +1501,10 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
         orderErrors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 运费导入失败: ${err.message}` });
       }
     }
+
+    await batchInsert(trx, 'freight_bills', newBills);
+    await batchUpdateGrouped(trx, 'freight_bills', billUpdateList);
+    await batchInsert(trx, 'change_logs', changeLogRecords);
   });
 
   const allErrors = [...errors, ...orderErrors];

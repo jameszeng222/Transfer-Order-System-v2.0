@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
+import { applyTimeRangeFilters } from '../utils/queryHelpers.js';
 
 const discrepancies = new Hono();
 
@@ -79,21 +80,12 @@ discrepancies.get('/stats', async (c) => {
 
 discrepancies.get('/', async (c) => {
   const page = Number(c.req.query('page')) || 1;
-  const pageSize = Number(c.req.query('pageSize')) || 20;
+  const MAX_PAGE_SIZE = 200;
+const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const status = c.req.query('status');
   const discrepancyCategory = c.req.query('discrepancy_category');
   const discrepancyType = c.req.query('discrepancy_type');
   const transferNo = c.req.query('transfer_no');
-  const createTimeStart = c.req.query('create_time_start');
-  const createTimeEnd = c.req.query('create_time_end');
-  const departTimeStart = c.req.query('depart_time_start');
-  const departTimeEnd = c.req.query('depart_time_end');
-  const pickupTimeStart = c.req.query('pickup_time_start');
-  const pickupTimeEnd = c.req.query('pickup_time_end');
-  const deliveryTimeStart = c.req.query('delivery_time_start');
-  const deliveryTimeEnd = c.req.query('delivery_time_end');
-  const shelveTimeStart = c.req.query('shelve_time_start');
-  const shelveTimeEnd = c.req.query('shelve_time_end');
 
   let query = db('discrepancy_records')
     .leftJoin('transfer_orders', 'discrepancy_records.transfer_no', 'transfer_orders.transfer_no')
@@ -133,36 +125,8 @@ discrepancies.get('/', async (c) => {
   if (transferNo) {
     query = query.where('discrepancy_records.transfer_no', 'like', `%${transferNo}%`);
   }
-  if (createTimeStart) {
-    query = query.where('transfer_orders.create_time', '>=', createTimeStart);
-  }
-  if (createTimeEnd) {
-    query = query.where('transfer_orders.create_time', '<=', createTimeEnd + 'T23:59:59.999Z');
-  }
-  if (departTimeStart) {
-    query = query.where('transfer_orders.depart_time', '>=', departTimeStart);
-  }
-  if (departTimeEnd) {
-    query = query.where('transfer_orders.depart_time', '<=', departTimeEnd + 'T23:59:59.999Z');
-  }
-  if (pickupTimeStart) {
-    query = query.where('transfer_orders.pickup_time', '>=', pickupTimeStart);
-  }
-  if (pickupTimeEnd) {
-    query = query.where('transfer_orders.pickup_time', '<=', pickupTimeEnd + 'T23:59:59.999Z');
-  }
-  if (deliveryTimeStart) {
-    query = query.where('transfer_orders.delivery_time', '>=', deliveryTimeStart);
-  }
-  if (deliveryTimeEnd) {
-    query = query.where('transfer_orders.delivery_time', '<=', deliveryTimeEnd + 'T23:59:59.999Z');
-  }
-  if (shelveTimeStart) {
-    query = query.where('transfer_orders.shelve_time', '>=', shelveTimeStart);
-  }
-  if (shelveTimeEnd) {
-    query = query.where('transfer_orders.shelve_time', '<=', shelveTimeEnd + 'T23:59:59.999Z');
-  }
+
+  query = applyTimeRangeFilters(query, c, 'transfer_orders');
 
   const totalResult = await query.clone().count('* as count').first();
   const total = Number(totalResult?.count || 0);

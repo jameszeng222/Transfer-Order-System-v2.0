@@ -16,26 +16,23 @@ query.post('/order', async (c) => {
       return c.json({ success: false, error: 'Transfer order not found' }, 404);
     }
 
-    const items = await db('transfer_order_items').where({ transfer_no: transferNo });
+    const [items, cartons, trackingEvents, discrepancyRecords, freightBills, changeLogs] = await Promise.all([
+      db('transfer_order_items').where({ transfer_no: transferNo }),
+      db('transfer_cartons').where({ transfer_no: transferNo }),
+      db('tracking_events').where({ transfer_no: transferNo }).orderBy('event_time', 'desc'),
+      db('discrepancy_records').where({ transfer_no: transferNo }),
+      db('freight_bills').where({ transfer_no: transferNo }),
+      db('change_logs').where({ transfer_no: transferNo }).orderBy('change_time', 'desc').limit(20),
+    ]);
+
     const itemsWithShortage = items.map((item: any) => ({
       ...item,
       shelf_shortage: (item.inbound_qty > 0 && item.shelf_qty < item.inbound_qty) 
         ? item.inbound_qty - item.shelf_qty 
         : 0,
     }));
-    const cartons = await db('transfer_cartons').where({ transfer_no: transferNo });
-    const trackingEvents = await db('tracking_events').where({ transfer_no: transferNo }).orderBy('event_time', 'desc');
-    const discrepancyRecords = await db('discrepancy_records').where({ transfer_no: transferNo });
-    const freightBills = await db('freight_bills').where({ transfer_no: transferNo });
-    const changeLogs = await db('change_logs').where({ transfer_no: transferNo }).orderBy('change_time', 'desc').limit(20);
 
-    const cartonNos = cartons.map((ct: any) => ct.carton_no);
-    let cartonItems: any[] = [];
-    if (cartonNos.length > 0) {
-      cartonItems = await db('transfer_carton_items')
-        .where({ transfer_no: transferNo })
-        .whereIn('carton_no', cartonNos);
-    }
+    const cartonItems = await db('transfer_carton_items').where({ transfer_no: transferNo });
 
     const cartonItemsMap: Record<string, any[]> = {};
     for (const ci of cartonItems) {

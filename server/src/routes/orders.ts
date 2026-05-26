@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
+import { applyTimeRangeFilters } from '../utils/queryHelpers.js';
 import XLSX from 'xlsx';
 
 const STATUS_FLOW: Record<string, string[]> = {
@@ -47,7 +48,8 @@ const editOrderSchema = z.object({
 
 orders.get('/', async (c) => {
   const page = Number(c.req.query('page')) || 1;
-  const pageSize = Number(c.req.query('pageSize')) || 20;
+  const MAX_PAGE_SIZE = 200;
+const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const keyword = c.req.query('keyword') || '';
   const status = c.req.query('status');
   const fromWarehouse = c.req.query('from_warehouse');
@@ -59,16 +61,6 @@ orders.get('/', async (c) => {
   const abnormal = c.req.query('abnormal');
   const sortBy = c.req.query('sortBy') || 'create_time';
   const sortOrder = c.req.query('sortOrder') || 'desc';
-  const createTimeStart = c.req.query('create_time_start');
-  const createTimeEnd = c.req.query('create_time_end');
-  const departTimeStart = c.req.query('depart_time_start');
-  const departTimeEnd = c.req.query('depart_time_end');
-  const pickupTimeStart = c.req.query('pickup_time_start');
-  const pickupTimeEnd = c.req.query('pickup_time_end');
-  const deliveryTimeStart = c.req.query('delivery_time_start');
-  const deliveryTimeEnd = c.req.query('delivery_time_end');
-  const shelveTimeStart = c.req.query('shelve_time_start');
-  const shelveTimeEnd = c.req.query('shelve_time_end');
 
   let query = db('transfer_orders');
 
@@ -111,36 +103,7 @@ orders.get('/', async (c) => {
     }
   }
 
-  if (createTimeStart) {
-    query = query.where('create_time', '>=', createTimeStart);
-  }
-  if (createTimeEnd) {
-    query = query.where('create_time', '<=', createTimeEnd + 'T23:59:59.999Z');
-  }
-  if (departTimeStart) {
-    query = query.where('depart_time', '>=', departTimeStart);
-  }
-  if (departTimeEnd) {
-    query = query.where('depart_time', '<=', departTimeEnd + 'T23:59:59.999Z');
-  }
-  if (pickupTimeStart) {
-    query = query.where('pickup_time', '>=', pickupTimeStart);
-  }
-  if (pickupTimeEnd) {
-    query = query.where('pickup_time', '<=', pickupTimeEnd + 'T23:59:59.999Z');
-  }
-  if (deliveryTimeStart) {
-    query = query.where('delivery_time', '>=', deliveryTimeStart);
-  }
-  if (deliveryTimeEnd) {
-    query = query.where('delivery_time', '<=', deliveryTimeEnd + 'T23:59:59.999Z');
-  }
-  if (shelveTimeStart) {
-    query = query.where('shelve_time', '>=', shelveTimeStart);
-  }
-  if (shelveTimeEnd) {
-    query = query.where('shelve_time', '<=', shelveTimeEnd + 'T23:59:59.999Z');
-  }
+  query = applyTimeRangeFilters(query, c);
 
   const totalResult = await query.clone().count('* as count').first();
   const total = Number(totalResult?.count || 0);
@@ -195,6 +158,9 @@ orders.get('/export', async (c) => {
   const toWarehouse = c.req.query('to_warehouse');
   const transportType = c.req.query('transport_type');
   const source = c.req.query('source');
+  const isLogisticsAbnormal = c.req.query('is_logistics_abnormal');
+  const isShelfAbnormal = c.req.query('is_shelf_abnormal');
+  const isReconciled = c.req.query('is_reconciled');
   const abnormal = c.req.query('abnormal');
 
   let query = db('transfer_orders');
@@ -220,6 +186,15 @@ orders.get('/export', async (c) => {
   if (source) {
     query = query.where('source', source);
   }
+  if (isLogisticsAbnormal !== undefined && isLogisticsAbnormal !== '') {
+    query = query.where('is_logistics_abnormal', isLogisticsAbnormal === 'true' ? 1 : 0);
+  }
+  if (isShelfAbnormal !== undefined && isShelfAbnormal !== '') {
+    query = query.where('is_shelf_abnormal', isShelfAbnormal === 'true' ? 1 : 0);
+  }
+  if (isReconciled !== undefined && isReconciled !== '') {
+    query = query.where('is_reconciled', isReconciled === 'true' ? 1 : 0);
+  }
   if (abnormal) {
     if (abnormal === 'logistics') {
       query = query.where('is_logistics_abnormal', 1);
@@ -231,6 +206,7 @@ orders.get('/export', async (c) => {
       });
     }
   }
+  query = applyTimeRangeFilters(query, c);
 
   const data = await query
     .select([
@@ -372,10 +348,17 @@ orders.put('/batch-status', zValidator('json', z.object({
 })), async (c) => {
   const { transferNos, status: newStatus, remark } = c.req.valid('json');
   const user = c.get('user');
+
+  const orders = await db('transfer_orders').whereIn('transfer_no', transferNos);
+  const orderMap = new Map(orders.map((o: any) => [o.transfer_no, o]));
+
+  const validUpdates: any[] = [];
+  const changeLogEntries: any[] = [];
   const results: { transferNo: string; success: boolean; error?: string }[] = [];
+  const now = new Date().toISOString();
 
   for (const transferNo of transferNos) {
-    const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
+    const order = orderMap.get(transferNo);
     if (!order) {
       results.push({ transferNo, success: false, error: '不存在' });
       continue;
@@ -390,15 +373,14 @@ orders.put('/batch-status', zValidator('json', z.object({
       continue;
     }
 
-    const now = new Date().toISOString();
     const updates: Record<string, any> = { status: newStatus, update_time: now };
     if (newStatus === 'OUTBOUNDED' && !order.depart_time) updates.depart_time = now;
     if (newStatus === 'IN_TRANSIT' && !order.pickup_time) updates.pickup_time = now;
     if (newStatus === 'RECEIVED' && !order.delivery_time) updates.delivery_time = now;
     if (newStatus === 'SHELVED' && !order.shelve_time) updates.shelve_time = now;
 
-    await db('transfer_orders').where({ transfer_no: transferNo }).update(updates);
-    await db('change_logs').insert({
+    validUpdates.push({ transferNo, updates });
+    changeLogEntries.push({
       record_type: 'TRANSFER_ORDER',
       record_id: order.id,
       transfer_no: transferNo,
@@ -411,6 +393,22 @@ orders.put('/batch-status', zValidator('json', z.object({
       reason: remark || `批量状态变更: ${order.status} → ${newStatus}`,
     });
     results.push({ transferNo, success: true });
+  }
+
+  if (validUpdates.length > 0) {
+    const updateGroups = new Map<string, string[]>();
+    for (const { transferNo, updates } of validUpdates) {
+      const key = JSON.stringify(updates);
+      if (!updateGroups.has(key)) updateGroups.set(key, []);
+      updateGroups.get(key)!.push(transferNo);
+    }
+    for (const [updatesJson, nos] of updateGroups) {
+      const updates = JSON.parse(updatesJson);
+      await db('transfer_orders').whereIn('transfer_no', nos).update(updates);
+    }
+    if (changeLogEntries.length > 0) {
+      await db('change_logs').insert(changeLogEntries);
+    }
   }
 
   return c.json({ success: true, data: results });

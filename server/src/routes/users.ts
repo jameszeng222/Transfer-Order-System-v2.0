@@ -31,7 +31,8 @@ const updateUserSchema = z.object({
 
 users.get('/', async (c) => {
   const page = Number(c.req.query('page')) || 1;
-  const pageSize = Number(c.req.query('pageSize')) || 20;
+  const MAX_PAGE_SIZE = 200;
+const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const keyword = c.req.query('keyword') || '';
   const isActive = c.req.query('is_active');
 

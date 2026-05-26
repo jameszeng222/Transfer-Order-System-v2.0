@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
+import { applyTimeRangeFilters } from '../utils/queryHelpers.js';
 import XLSX from 'xlsx';
 
 const tracking = new Hono();
@@ -10,16 +11,31 @@ interface SlaRule {
   sla_days: number;
 }
 
+let cachedSlaRules: SlaRule[] | null = null;
+let cachedSlaRulesAt = 0;
+const SLA_CACHE_TTL = 60_000;
+
 async function getSlaRules(): Promise<SlaRule[]> {
-  return db('sla_rules').select('dest_warehouse_id', 'transport_type', 'sla_days');
+  if (cachedSlaRules && Date.now() - cachedSlaRulesAt < SLA_CACHE_TTL) {
+    return cachedSlaRules;
+  }
+  const rules = await db('sla_rules').select('dest_warehouse_id', 'transport_type', 'sla_days');
+  cachedSlaRules = rules;
+  cachedSlaRulesAt = Date.now();
+  return rules;
 }
 
+let cachedWarehouseIdMap: Record<string, number> | null = null;
+let cachedWarehouseIdMapAt = 0;
+
 async function getWarehouseIdMap(): Promise<Record<string, number>> {
-  const warehouses = await db('warehouses').select('id', 'warehouse_code');
-  const map: Record<string, number> = {};
-  for (const w of warehouses) {
-    map[w.warehouse_code] = w.id;
+  if (cachedWarehouseIdMap && Date.now() - cachedWarehouseIdMapAt < SLA_CACHE_TTL) {
+    return cachedWarehouseIdMap;
   }
+  const warehouses = await db('warehouses').select('id', 'warehouse_code');
+  const map: Record<string, number> = Object.fromEntries(warehouses.map((w: any) => [w.warehouse_code, w.id]));
+  cachedWarehouseIdMap = map;
+  cachedWarehouseIdMapAt = Date.now();
   return map;
 }
 
@@ -48,21 +64,12 @@ function computeRemainingDays(pickupTime: string | null, slaDays: number): numbe
 
 tracking.get('/intransit', async (c) => {
   const page = Number(c.req.query('page')) || 1;
-  const pageSize = Number(c.req.query('pageSize')) || 20;
+  const MAX_PAGE_SIZE = 200;
+const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const fromWarehouse = c.req.query('from_warehouse');
   const toWarehouse = c.req.query('to_warehouse');
   const transportType = c.req.query('transport_type');
   const isTimeout = c.req.query('is_timeout');
-  const createTimeStart = c.req.query('create_time_start');
-  const createTimeEnd = c.req.query('create_time_end');
-  const departTimeStart = c.req.query('depart_time_start');
-  const departTimeEnd = c.req.query('depart_time_end');
-  const pickupTimeStart = c.req.query('pickup_time_start');
-  const pickupTimeEnd = c.req.query('pickup_time_end');
-  const deliveryTimeStart = c.req.query('delivery_time_start');
-  const deliveryTimeEnd = c.req.query('delivery_time_end');
-  const shelveTimeStart = c.req.query('shelve_time_start');
-  const shelveTimeEnd = c.req.query('shelve_time_end');
 
   let query = db('transfer_orders').where('status', 'IN_TRANSIT');
 
@@ -75,36 +82,8 @@ tracking.get('/intransit', async (c) => {
   if (transportType) {
     query = query.where('transport_type', transportType);
   }
-  if (createTimeStart) {
-    query = query.where('create_time', '>=', createTimeStart);
-  }
-  if (createTimeEnd) {
-    query = query.where('create_time', '<=', createTimeEnd + 'T23:59:59.999Z');
-  }
-  if (departTimeStart) {
-    query = query.where('depart_time', '>=', departTimeStart);
-  }
-  if (departTimeEnd) {
-    query = query.where('depart_time', '<=', departTimeEnd + 'T23:59:59.999Z');
-  }
-  if (pickupTimeStart) {
-    query = query.where('pickup_time', '>=', pickupTimeStart);
-  }
-  if (pickupTimeEnd) {
-    query = query.where('pickup_time', '<=', pickupTimeEnd + 'T23:59:59.999Z');
-  }
-  if (deliveryTimeStart) {
-    query = query.where('delivery_time', '>=', deliveryTimeStart);
-  }
-  if (deliveryTimeEnd) {
-    query = query.where('delivery_time', '<=', deliveryTimeEnd + 'T23:59:59.999Z');
-  }
-  if (shelveTimeStart) {
-    query = query.where('shelve_time', '>=', shelveTimeStart);
-  }
-  if (shelveTimeEnd) {
-    query = query.where('shelve_time', '<=', shelveTimeEnd + 'T23:59:59.999Z');
-  }
+
+  query = applyTimeRangeFilters(query, c);
 
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
 
@@ -187,22 +166,27 @@ tracking.get('/intransit', async (c) => {
 });
 
 tracking.get('/dashboard', async (c) => {
-  const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const inTransitOrders = await db('transfer_orders')
-    .where('status', 'IN_TRANSIT')
-    .select([
-      'id',
-      'to_warehouse',
-      'transport_type',
-      'pickup_time',
-    ]);
+  const [slaRules, warehouseIdMap, inTransitOrders, warehouseDistRows, transportDistRows, recentReceived] = await Promise.all([
+    getSlaRules(),
+    getWarehouseIdMap(),
+    db('transfer_orders')
+      .where('status', 'IN_TRANSIT')
+      .select([
+        'id',
+        'to_warehouse',
+        'transport_type',
+        'pickup_time',
+      ]),
+    db('transfer_orders').where('status', 'IN_TRANSIT').select('to_warehouse').count('* as count').groupBy('to_warehouse'),
+    db('transfer_orders').where('status', 'IN_TRANSIT').select('transport_type').count('* as count').groupBy('transport_type'),
+    db('transfer_orders').where('status', 'RECEIVED').where('delivery_time', '>=', sevenDaysAgo.toISOString()).select('delivery_time'),
+  ]);
 
   let timeoutCount = 0;
   let approachingCount = 0;
-
-  const warehouseDist: Record<string, number> = {};
-  const transportDist: Record<string, number> = {};
 
   for (const order of inTransitOrders) {
     const slaDays = computeSlaDays(order.to_warehouse, order.transport_type, slaRules, warehouseIdMap);
@@ -213,17 +197,17 @@ tracking.get('/dashboard', async (c) => {
     } else if (remaining !== null && remaining > 0 && remaining <= 3) {
       approachingCount++;
     }
-
-    warehouseDist[order.to_warehouse] = (warehouseDist[order.to_warehouse] || 0) + 1;
-    transportDist[order.transport_type] = (transportDist[order.transport_type] || 0) + 1;
   }
 
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const recentReceived = await db('transfer_orders')
-    .where('status', 'RECEIVED')
-    .where('delivery_time', '>=', sevenDaysAgo.toISOString())
-    .select('delivery_time');
+  const warehouseDist: Record<string, number> = {};
+  for (const row of warehouseDistRows) {
+    warehouseDist[row.to_warehouse] = Number(row.count);
+  }
+
+  const transportDist: Record<string, number> = {};
+  for (const row of transportDistRows) {
+    transportDist[row.transport_type] = Number(row.count);
+  }
 
   const dailyTrend: Record<string, number> = {};
   for (const r of recentReceived) {
@@ -432,9 +416,9 @@ tracking.get('/sla-check', async (c) => {
       'logistics_abnormal_type',
     ]);
 
-  let checkedCount = inTransitOrders.length;
-  let newTimeoutCount = 0;
   const now = new Date().toISOString();
+  const timeoutIds: number[] = [];
+  const typeUpdateIds: number[] = [];
 
   for (const order of inTransitOrders) {
     const slaDays = computeSlaDays(order.to_warehouse, order.transport_type, slaRules, warehouseIdMap);
@@ -442,27 +426,32 @@ tracking.get('/sla-check', async (c) => {
 
     if (remaining !== null && remaining <= 0) {
       if (!order.is_logistics_abnormal) {
-        await db('transfer_orders').where({ id: order.id }).update({
-          is_logistics_abnormal: true,
-          logistics_abnormal_type: 'TIMEOUT_DELIVERY',
-          update_time: now,
-        });
-        newTimeoutCount++;
+        timeoutIds.push(order.id);
       } else if (order.logistics_abnormal_type !== 'TIMEOUT_DELIVERY') {
-        await db('transfer_orders').where({ id: order.id }).update({
-          logistics_abnormal_type: 'TIMEOUT_DELIVERY',
-          update_time: now,
-        });
-        newTimeoutCount++;
+        typeUpdateIds.push(order.id);
       }
     }
+  }
+
+  if (timeoutIds.length > 0) {
+    await db('transfer_orders').whereIn('id', timeoutIds).update({
+      is_logistics_abnormal: true,
+      logistics_abnormal_type: 'TIMEOUT_DELIVERY',
+      update_time: now,
+    });
+  }
+  if (typeUpdateIds.length > 0) {
+    await db('transfer_orders').whereIn('id', typeUpdateIds).update({
+      logistics_abnormal_type: 'TIMEOUT_DELIVERY',
+      update_time: now,
+    });
   }
 
   return c.json({
     success: true,
     data: {
-      checkedCount,
-      newTimeoutCount,
+      checkedCount: inTransitOrders.length,
+      newTimeoutCount: timeoutIds.length + typeUpdateIds.length,
     },
   });
 });
