@@ -78,6 +78,7 @@ const DEFAULT_FILTERS = {
   source: '',
   team: '',
   abnormal: '',
+  logistics_carrier: '',
 };
 
 const NEXT_STATUS_LABELS: Record<string, string> = {
@@ -115,6 +116,7 @@ export default function OrderListPage() {
   const [pageSize] = useState(20);
   const [loading, setLoading] = useState(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [carriers, setCarriers] = useState<{ id: number; carrier_name: string }[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
   const [timeFilters, setTimeFilters] = useState({ ...DEFAULT_TIME_FILTERS });
@@ -124,6 +126,12 @@ export default function OrderListPage() {
   useEffect(() => {
     api.get<{ success: boolean; data: Warehouse[] }>('/warehouses?pageSize=100')
       .then((res) => { if (res.success && Array.isArray(res.data)) setWarehouses(res.data); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.get<{ success: boolean; data: { id: number; carrier_name: string }[] }>('/carriers?pageSize=100')
+      .then((res) => { if (res.success && Array.isArray(res.data)) setCarriers(res.data); })
       .catch(() => {});
   }, []);
 
@@ -138,6 +146,7 @@ export default function OrderListPage() {
     if (filters.source) params.set('source', filters.source);
     if (filters.team) params.set('team', filters.team);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
+    if (filters.logistics_carrier) params.set('logistics_carrier', filters.logistics_carrier);
     if (timeFilters.createTimeRange.start) params.set('create_time_start', timeFilters.createTimeRange.start);
     if (timeFilters.createTimeRange.end) params.set('create_time_end', timeFilters.createTimeRange.end);
     if (timeFilters.departTimeRange.start) params.set('depart_time_start', timeFilters.departTimeRange.start);
@@ -436,6 +445,15 @@ export default function OrderListPage() {
             placeholder="异常筛选"
             options={ABNORMAL_OPTIONS}
             className="w-[130px]"
+          />
+          <FormField
+            name="logistics_carrier"
+            type="select"
+            value={filters.logistics_carrier}
+            onChange={handleFilterChange}
+            placeholder="全部物流商"
+            options={carriers.map(c => ({ label: c.carrier_name, value: c.carrier_name }))}
+            className="w-[140px]"
           />
           <Button icon={Search} onClick={handleSearch}>搜索</Button>
           <Button variant="ghost" icon={RotateCcw} onClick={handleReset}>重置</Button>

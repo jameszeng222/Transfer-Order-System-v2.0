@@ -86,6 +86,9 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [inProgressOrders, setInProgressOrders] = useState<InProgressOrder[]>([]);
+  const [inProgressTotal, setInProgressTotal] = useState(0);
+  const [inProgressPage, setInProgressPage] = useState(1);
+  const inProgressPageSize = 10;
 
   useEffect(() => {
     api.get<{ success: boolean; data: DashboardData }>('/tracking/dashboard')
@@ -96,12 +99,16 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    api.get<{ success: boolean; data: InProgressOrder[] }>('/orders/in-progress')
+    const params = new URLSearchParams({ page: String(inProgressPage), pageSize: String(inProgressPageSize) });
+    api.get<{ success: boolean; data: InProgressOrder[]; pagination: { total: number } }>(`/orders/in-progress?${params.toString()}`)
       .then((res) => {
-        if (res.success) setInProgressOrders(res.data);
+        if (res.success) {
+          setInProgressOrders(res.data || []);
+          setInProgressTotal(res.pagination?.total || 0);
+        }
       })
       .catch(() => {});
-  }, []);
+  }, [inProgressPage]);
 
   const inTransitCount = data?.inTransitTotal ?? 15;
   const abnormalCount = data?.timeoutCount ?? 4;
@@ -235,7 +242,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <Card title="进行中调拨单">
+      <Card title={`进行中调拨单（未录入完整）${inProgressTotal > 0 ? ` · ${inProgressTotal}条` : ''}`}>
         <div className="overflow-x-auto">
           <table className="w-full text-[12.5px]">
             <thead>
@@ -252,7 +259,7 @@ export default function DashboardPage() {
             <tbody>
               {inProgressOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-text-tertiary text-[13px]">暂无进行中的调拨单</td>
+                  <td colSpan={7} className="text-center py-12 text-text-tertiary text-[13px]">暂无未录入完整的调拨单</td>
                 </tr>
               ) : (
                 inProgressOrders.map((order) => (
@@ -281,6 +288,24 @@ export default function DashboardPage() {
             </tbody>
           </table>
         </div>
+        {inProgressTotal > inProgressPageSize && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border-light">
+            <span className="text-[11px] text-text-tertiary">共 {inProgressTotal} 条</span>
+            <div className="flex items-center gap-2">
+              <button
+                className="px-2.5 py-1 text-xs border border-border rounded disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-hover"
+                disabled={inProgressPage <= 1}
+                onClick={() => setInProgressPage(p => p - 1)}
+              >上一页</button>
+              <span className="text-xs text-text-secondary">{inProgressPage} / {Math.ceil(inProgressTotal / inProgressPageSize)}</span>
+              <button
+                className="px-2.5 py-1 text-xs border border-border rounded disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-hover"
+                disabled={inProgressPage >= Math.ceil(inProgressTotal / inProgressPageSize)}
+                onClick={() => setInProgressPage(p => p + 1)}
+              >下一页</button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

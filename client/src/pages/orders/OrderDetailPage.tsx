@@ -237,6 +237,38 @@ export default function OrderDetailPage() {
     }
   };
 
+  const [nodeEditOpen, setNodeEditOpen] = useState(false);
+  const [nodeEditField, setNodeEditField] = useState('');
+  const [nodeEditValue, setNodeEditValue] = useState('');
+  const [nodeEditSubmitting, setNodeEditSubmitting] = useState(false);
+
+  const openNodeEdit = (field: string, currentValue: string) => {
+    setNodeEditField(field);
+    setNodeEditValue(currentValue ? new Date(currentValue).toISOString().slice(0, 16) : '');
+    setNodeEditOpen(true);
+  };
+
+  const handleNodeEditSubmit = async () => {
+    if (!transferNo || !order) return;
+    setNodeEditSubmitting(true);
+    try {
+      const res = await api.put<{ success: boolean; error?: string }>('/orders/edit', {
+        transferNo,
+        [nodeEditField]: nodeEditValue ? new Date(nodeEditValue).toISOString() : null,
+      });
+      if (res.success) {
+        setNodeEditOpen(false);
+        await fetchOrder(transferNo);
+      } else {
+        alert(res.error || '更新失败');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '更新失败');
+    } finally {
+      setNodeEditSubmitting(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center py-24"><span className="text-sm text-text-tertiary">加载中...</span></div>;
   if (!order) return <EmptyState title="调拨单不存在" description={errorMsg || (transferNo ? '' : '未指定调拨单号')} action={<Button variant="ghost" onClick={() => navigate('/orders')}>返回列表</Button>} />;
 
@@ -256,10 +288,12 @@ export default function OrderDetailPage() {
     {
       title: '单据信息',
       items: [
-        { label: '入库单号', value: order.inbound_order_no || '--' },
+        { label: '第三方入库单号', value: order.inbound_order_no || '--' },
         { label: '调拨单号', value: order.transfer_no },
         { label: '出库单号', value: order.outbound_order_no || '--' },
         { label: 'ERP订单号', value: order.erp_order_no || '--' },
+        { label: '创建时间', value: order.create_time ? new Date(order.create_time).toLocaleString('zh-CN') : '--' },
+        { label: '出库时间', value: order.depart_time ? new Date(order.depart_time).toLocaleString('zh-CN') : '--' },
       ],
     },
     {
@@ -422,14 +456,20 @@ export default function OrderDetailPage() {
           <div className="px-5 py-4 flex items-center overflow-x-auto">
             {timelineData.map((node, idx) => (
               <div key={node.key} className="flex items-center">
-                <div className="flex flex-col items-center min-w-[72px]">
+                <div
+                  className="flex flex-col items-center min-w-[72px] cursor-pointer group"
+                  onClick={() => openNodeEdit(node.timeField, order[node.timeField] || '')}
+                  title="点击编辑时间"
+                >
                   <div className={`w-2.5 h-2.5 rounded-full mb-1.5 z-[2] ${
                     idx < currentIdx ? 'bg-green' :
                     idx === currentIdx ? 'bg-accent shadow-[0_0_0_3px_var(--accent-light)]' :
                     'bg-border'
                   }`} />
                   <div className="text-[11px] text-text-tertiary text-center">{node.label}</div>
-                  <div className="text-[10px] text-text-tertiary mt-0.5">{idx <= currentIdx ? node.time : idx === currentIdx + 1 ? '待提取' : '—'}</div>
+                  <div className="text-[10px] text-text-tertiary mt-0.5 group-hover:text-accent transition-colors">
+                    {idx <= currentIdx ? node.time : idx === currentIdx + 1 ? '待提取' : '—'}
+                  </div>
                 </div>
                 {idx < timelineData.length - 1 && (
                   <div className={`flex-1 h-0.5 min-w-[20px] ${idx < currentIdx ? 'bg-green' : 'bg-border'}`} />
@@ -465,7 +505,7 @@ export default function OrderDetailPage() {
             <Button variant="secondary" size="sm">导入物流跟踪号</Button>
           </div>
         }>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 px-5 py-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 px-5 py-4 max-h-[480px] overflow-y-auto">
             {order.cartons.map((ct) => (
               <div key={ct.carton_no} className="border border-border rounded-lg px-4 py-3.5 hover:shadow-sm hover:border-accent transition-all">
                 <div className="flex justify-between items-center mb-2.5">
@@ -583,6 +623,24 @@ export default function OrderDetailPage() {
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
             <Button variant="secondary" onClick={() => { setConfirmShortageOpen(false); setConfirmShortageItem(null); }}>取消</Button>
             <Button loading={confirmShortageSubmitting} onClick={() => confirmShortageItem && handleConfirmShortage(confirmShortageItem)}>确认生成</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={nodeEditOpen} title={`编辑${TIMELINE_NODES.find(n => n.timeField === nodeEditField)?.label || '时间节点'}`} onClose={() => setNodeEditOpen(false)} width="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-text-tertiary mb-1">时间</label>
+            <input
+              type="datetime-local"
+              className="w-full border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+              value={nodeEditValue}
+              onChange={e => setNodeEditValue(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+            <Button variant="secondary" onClick={() => setNodeEditOpen(false)}>取消</Button>
+            <Button loading={nodeEditSubmitting} onClick={handleNodeEditSubmit}>保存</Button>
           </div>
         </div>
       </Modal>

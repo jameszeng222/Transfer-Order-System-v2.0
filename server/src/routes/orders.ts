@@ -45,6 +45,14 @@ const editOrderSchema = z.object({
   remark: z.string().optional(),
   logistics_abnormal_remark: z.string().optional(),
   shelf_abnormal_remark: z.string().optional(),
+  pickup_time: z.string().nullable().optional(),
+  depart_time: z.string().nullable().optional(),
+  arrive_port_time: z.string().nullable().optional(),
+  clearance_time: z.string().nullable().optional(),
+  last_mile_pickup_time: z.string().nullable().optional(),
+  delivery_time: z.string().nullable().optional(),
+  unload_time: z.string().nullable().optional(),
+  shelve_time: z.string().nullable().optional(),
 });
 
 orders.get('/', async (c) => {
@@ -63,6 +71,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const isLogisticsAbnormal = c.req.query('is_logistics_abnormal');
   const isShelfAbnormal = c.req.query('is_shelf_abnormal');
   const abnormal = c.req.query('abnormal');
+  const logisticsCarrier = c.req.query('logistics_carrier');
   const sortBy = c.req.query('sortBy') || 'create_time';
   const sortOrder = c.req.query('sortOrder') || 'desc';
 
@@ -106,6 +115,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       });
     }
   }
+  if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
 
   query = applyTimeRangeFilters(query, c);
 
@@ -169,6 +179,7 @@ orders.get('/export', async (c) => {
   const isShelfAbnormal = c.req.query('is_shelf_abnormal');
   const isReconciled = c.req.query('is_reconciled');
   const abnormal = c.req.query('abnormal');
+  const logisticsCarrier = c.req.query('logistics_carrier');
 
   let query = db('transfer_orders');
 
@@ -213,6 +224,7 @@ orders.get('/export', async (c) => {
       });
     }
   }
+  if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
   query = applyTimeRangeFilters(query, c);
 
   const data = await query
@@ -267,20 +279,22 @@ orders.get('/in-progress', async (c) => {
   if (!await requirePermission(c, 'order.view')) {
     return c.json({ success: false, error: '无权限' }, 403);
   }
-  const orders = await db('transfer_orders')
+  const page = Number(c.req.query('page')) || 1;
+  const pageSize = Math.min(Number(c.req.query('pageSize')) || 10, 50);
+
+  const allOrders = await db('transfer_orders')
     .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
     .select(['transfer_no', 'inbound_order_no', 'status', 'from_warehouse', 'to_warehouse', 'transport_type', 'logistics_carrier', 'logistics_tracking_no', 'total_carton_count', 'total_freight_amount', 'is_reconciled'])
-    .orderBy('create_time', 'desc')
-    .limit(50);
+    .orderBy('create_time', 'desc');
 
   const cartonData = await db('transfer_cartons')
-    .whereIn('transfer_no', orders.map(o => o.transfer_no))
+    .whereIn('transfer_no', allOrders.map(o => o.transfer_no))
     .whereNotNull('carton_weight')
     .select(['transfer_no']);
 
   const cartonsWithWeight = new Set(cartonData.map((c: any) => c.transfer_no));
 
-  const result = orders.map((o: any) => ({
+  const enriched = allOrders.map((o: any) => ({
     ...o,
     has_basic_info: !!(o.from_warehouse && o.to_warehouse && o.transport_type && o.total_carton_count > 0),
     has_logistics_info: !!(o.logistics_carrier && o.logistics_tracking_no),
@@ -289,7 +303,11 @@ orders.get('/in-progress', async (c) => {
     has_freight: !!(o.total_freight_amount > 0 || o.is_reconciled),
   }));
 
-  return c.json({ success: true, data: result });
+  const incomplete = enriched.filter((o: any) => !o.has_basic_info || !o.has_logistics_info || !o.has_carton_specs || !o.has_outbound || !o.has_freight);
+  const total = incomplete.length;
+  const paginated = incomplete.slice((page - 1) * pageSize, page * pageSize);
+
+  return c.json({ success: true, data: paginated, pagination: { total, page, pageSize } });
 });
 
 const statusChangeWithTransferSchema = statusChangeSchema.extend({ transferNo: z.string().min(1) });
