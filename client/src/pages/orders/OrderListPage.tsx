@@ -331,7 +331,7 @@ export default function OrderListPage() {
           <Badge variant={STATUS_BADGE_MAP[row.status as string] || 'pending'}>
             {TransferStatusLabel[row.status as TransferStatus] || (row.status as string)}
           </Badge>
-          {row.is_timeout_warning && <Badge variant="abnormal">超时</Badge>}
+          {row.is_timeout_warning ? <Badge variant="abnormal">超时</Badge> : null}
         </span>
       ),
     },

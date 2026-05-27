@@ -656,7 +656,7 @@ export default function OrderDetailPage() {
                       {log.change_time ? new Date(log.change_time).toLocaleString('zh-CN') : '--'}
                     </span>
                     <span className="shrink-0">
-                      <Badge variant={log.change_source === 'API' ? 'complete' : log.change_source === 'IMPORT' ? 'transit' : 'pending'}>
+                      <Badge variant={log.change_source === 'API' ? 'complete' as const : log.change_source === 'IMPORT' ? 'transit' as const : 'pending' as const}>
                         {log.change_source === 'API' ? 'API' : log.change_source === 'IMPORT' ? '导入' : '手动'}
                       </Badge>
                     </span>

@@ -302,7 +302,7 @@ export default function TrackingPage() {
             {diffDays < 0 ? <span className="text-red font-medium">{str} ⚠</span> :
              diffDays <= 3 ? <span className="text-orange">{str}</span> :
              <span>{str}</span>}
-            {isPastDue && <Badge variant="abnormal">超时</Badge>}
+            {isPastDue ? <Badge variant="abnormal">超时</Badge> : null}
           </span>
         );
       },
