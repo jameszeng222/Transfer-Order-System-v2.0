@@ -591,6 +591,44 @@ export default function OrderDetailPage() {
             </div>
           </div>
         </Card>
+
+        <Card title="操作历史">
+          <div className="px-5 py-4 max-h-[320px] overflow-y-auto">
+            {order.change_logs && order.change_logs.length > 0 ? (
+              <div className="space-y-2">
+                {order.change_logs.map((log) => (
+                  <div key={log.id} className="flex items-start gap-3 text-sm">
+                    <span className="text-text-tertiary shrink-0 text-xs min-w-[120px]">
+                      {log.change_time ? new Date(log.change_time).toLocaleString('zh-CN') : '--'}
+                    </span>
+                    <span className="shrink-0">
+                      <Badge variant={log.change_source === 'API' ? 'complete' : log.change_source === 'IMPORT' ? 'transit' : 'pending'}>
+                        {log.change_source === 'API' ? 'API' : log.change_source === 'IMPORT' ? '导入' : '手动'}
+                      </Badge>
+                    </span>
+                    <span className="text-text-secondary">
+                      {log.field_name === 'status' ? `状态变更: ${log.old_value} → ${log.new_value}` :
+                       log.field_name === 'IMPORT_CREATE' ? '系统导入创建' :
+                       log.field_name === 'IMPORT_OVERWRITE' ? '导入覆盖更新' :
+                       log.field_name === 'IMPORT_OUTBOUND' ? '导入出库回传' :
+                       log.field_name === 'IMPORT_INBOUND' ? '导入入库回传' :
+                       log.field_name === 'IMPORT_LOGISTICS' ? '导入物流信息' :
+                       log.field_name === 'IMPORT_LOGISTICS_EVENTS' ? '导入物流事件' :
+                       log.field_name === 'IMPORT_LOGISTICS_MERGED' ? '导入物流节点' :
+                       log.field_name === 'IMPORT_FREIGHT' ? '导入运费账单' :
+                       log.field_name === 'CONFLICT_DETECTED' ? `冲突检测: ${log.old_value} → ${log.new_value}` :
+                       `${log.field_name}: ${log.old_value || '(空)'} → ${log.new_value || '(空)'}`
+                      }
+                    </span>
+                    {log.operator && <span className="text-text-tertiary text-xs ml-auto">{log.operator}</span>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-text-tertiary text-sm">暂无操作记录</div>
+            )}
+          </div>
+        </Card>
       </div>
 
       <Modal open={discrepancyOpen} title="报异常" onClose={() => setDiscrepancyOpen(false)} width="md">

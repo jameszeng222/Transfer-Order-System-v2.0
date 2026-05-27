@@ -61,6 +61,8 @@ const DEFAULT_FILTERS = {
   to_warehouse: '',
   transport_type: '',
   abnormal: '',
+  logistics_carrier: '',
+  team: '',
 };
 
 const DEFAULT_TIME_FILTERS = {
@@ -87,6 +89,8 @@ export default function TrackingPage() {
   const [pageSize] = useState(20);
   const [loading, setLoading] = useState(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [carriers, setCarriers] = useState<{ id: number; carrier_name: string }[]>([]);
+  const [teams, setTeams] = useState<{ id: number; team_name: string }[]>([]);
   const [slaCheckResult, setSlaCheckResult] = useState<{ checkedCount: number; newTimeoutCount: number } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
@@ -95,6 +99,18 @@ export default function TrackingPage() {
   useEffect(() => {
     api.get<{ success: boolean; data: Warehouse[] }>('/warehouses?pageSize=100')
       .then((res) => { if (res.success && Array.isArray(res.data)) setWarehouses(res.data); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.get<{ success: boolean; data: { id: number; carrier_name: string }[] }>('/carriers?pageSize=100')
+      .then((res) => { if (res.success && Array.isArray(res.data)) setCarriers(res.data); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.get<{ success: boolean; data: { id: number; team_name: string }[] }>('/teams?pageSize=100')
+      .then((res) => { if (res.success && Array.isArray(res.data)) setTeams(res.data); })
       .catch(() => {});
   }, []);
 
@@ -114,6 +130,8 @@ export default function TrackingPage() {
     if (filters.to_warehouse) params.set('to_warehouse', filters.to_warehouse);
     if (filters.transport_type) params.set('transport_type', filters.transport_type);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
+    if (filters.logistics_carrier) params.set('logistics_carrier', filters.logistics_carrier);
+    if (filters.team) params.set('team', filters.team);
     if (timeFilters.createTimeRange.start) params.set('create_time_start', timeFilters.createTimeRange.start);
     if (timeFilters.createTimeRange.end) params.set('create_time_end', timeFilters.createTimeRange.end);
     if (timeFilters.departTimeRange.start) params.set('depart_time_start', timeFilters.departTimeRange.start);
@@ -264,9 +282,15 @@ export default function TrackingPage() {
         const now = new Date();
         const diffDays = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         const str = formatDate(val);
-        if (diffDays < 0) return <span className="text-red font-medium">{str} ⚠</span>;
-        if (diffDays <= 3) return <span className="text-orange">{str}</span>;
-        return <span>{str}</span>;
+        const isPastDue = row.is_timeout;
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            {diffDays < 0 ? <span className="text-red font-medium">{str} ⚠</span> :
+             diffDays <= 3 ? <span className="text-orange">{str}</span> :
+             <span>{str}</span>}
+            {isPastDue && <Badge variant="abnormal">超时</Badge>}
+          </span>
+        );
       },
     },
     {
@@ -339,6 +363,24 @@ export default function TrackingPage() {
             onChange={handleFilterChange}
             placeholder="全部异常"
             options={ABNORMAL_OPTIONS}
+            className="w-[130px]"
+          />
+          <FormField
+            name="logistics_carrier"
+            type="select"
+            value={filters.logistics_carrier}
+            onChange={handleFilterChange}
+            placeholder="全部物流商"
+            options={carriers.map(c => ({ label: c.carrier_name, value: c.carrier_name }))}
+            className="w-[140px]"
+          />
+          <FormField
+            name="team"
+            type="select"
+            value={filters.team}
+            onChange={handleFilterChange}
+            placeholder="全部团队"
+            options={teams.map(t => ({ label: t.team_name, value: t.team_name }))}
             className="w-[130px]"
           />
           <Button icon={Search} onClick={handleSearch}>搜索</Button>

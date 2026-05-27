@@ -74,6 +74,8 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const toWarehouse = c.req.query('to_warehouse');
   const transportType = c.req.query('transport_type');
   const isTimeout = c.req.query('is_timeout');
+  const logisticsCarrier = c.req.query('logistics_carrier');
+  const team = c.req.query('team');
 
   let query = db('transfer_orders').where('status', 'IN_TRANSIT');
 
@@ -85,6 +87,12 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   }
   if (transportType) {
     query = query.where('transport_type', transportType);
+  }
+  if (logisticsCarrier) {
+    query = query.where('logistics_carrier', logisticsCarrier);
+  }
+  if (team) {
+    query = query.where('team', team);
   }
 
   query = applyTimeRangeFilters(query, c);
@@ -259,6 +267,8 @@ tracking.get('/export', async (c) => {
   const toWarehouse = c.req.query('to_warehouse');
   const transportType = c.req.query('transport_type');
   const isTimeout = c.req.query('is_timeout');
+  const logisticsCarrier = c.req.query('logistics_carrier');
+  const team = c.req.query('team');
 
   let query = db('transfer_orders').where('status', 'IN_TRANSIT');
 
@@ -271,133 +281,231 @@ tracking.get('/export', async (c) => {
   if (transportType) {
     query = query.where('transport_type', transportType);
   }
+  if (logisticsCarrier) {
+    query = query.where('logistics_carrier', logisticsCarrier);
+  }
+  if (team) {
+    query = query.where('team', team);
+  }
 
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
 
-  const data = await query.clone().select([
-    'transfer_no',
-    'inbound_order_no',
-    'from_warehouse',
-    'to_warehouse',
-    'status',
-    'transport_type',
-    'logistics_carrier',
-    'logistics_tracking_no',
-    'team',
-    'total_sku_count',
-    'total_qty',
-    'total_carton_count',
-    'pickup_time',
-    'depart_time',
-    'arrive_port_time',
-    'clearance_time',
-    'last_mile_pickup_time',
-    'delivery_time',
-    'is_customs_declared',
-    'is_inspected',
-    'timeline_requirement_days',
-    'expected_arrival_date',
-    'is_logistics_abnormal',
-    'logistics_abnormal_type',
-    'logistics_abnormal_remark',
-    'is_shelf_abnormal',
-    'shelf_abnormal_type',
-    'estimated_unit_price',
-    'estimated_freight',
-    'freight_currency',
-    'is_reconciled',
-    'is_paid',
-    'create_time',
-    'remark',
+  const orders = await query.clone().select([
+    'transfer_orders.id',
+    'transfer_orders.transfer_no',
+    'transfer_orders.inbound_order_no',
+    'transfer_orders.from_warehouse',
+    'transfer_orders.to_warehouse',
+    'transfer_orders.status',
+    'transfer_orders.transport_type',
+    'transfer_orders.logistics_carrier',
+    'transfer_orders.logistics_tracking_no',
+    'transfer_orders.team',
+    'transfer_orders.total_sku_count',
+    'transfer_orders.total_qty',
+    'transfer_orders.total_carton_count',
+    'transfer_orders.pickup_time',
+    'transfer_orders.depart_time',
+    'transfer_orders.arrive_port_time',
+    'transfer_orders.clearance_time',
+    'transfer_orders.last_mile_pickup_time',
+    'transfer_orders.delivery_time',
+    'transfer_orders.unload_time',
+    'transfer_orders.shelve_time',
+    'transfer_orders.is_customs_declared',
+    'transfer_orders.is_inspected',
+    'transfer_orders.timeline_requirement_days',
+    'transfer_orders.expected_arrival_date',
+    'transfer_orders.expected_shelf_date',
+    'transfer_orders.is_logistics_abnormal',
+    'transfer_orders.logistics_abnormal_type',
+    'transfer_orders.logistics_abnormal_remark',
+    'transfer_orders.is_shelf_abnormal',
+    'transfer_orders.shelf_abnormal_type',
+    'transfer_orders.delay_explanation',
+    'transfer_orders.last_mile_type',
+    'transfer_orders.last_mile_channel',
+    'transfer_orders.remark',
   ]);
 
-  const rows = data.map((row: any) => {
-    const slaDays = computeSlaDays(row.to_warehouse, row.transport_type, slaRules, warehouseIdMap);
-    const remainingDays = computeRemainingDays(row.pickup_time, slaDays);
-    const timeout = remainingDays !== null && remainingDays <= 0;
-    return { ...row, is_timeout: timeout };
-  });
+  const orderTimeoutMap: Record<string, boolean> = {};
+  for (const o of orders) {
+    const slaDays = computeSlaDays(o.to_warehouse, o.transport_type, slaRules, warehouseIdMap);
+    const remainingDays = computeRemainingDays(o.pickup_time, slaDays);
+    orderTimeoutMap[o.transfer_no] = remainingDays !== null && remainingDays <= 0;
+  }
 
-  const filtered = isTimeout !== undefined && isTimeout !== ''
-    ? rows.filter((r: any) => {
-        if (isTimeout === 'true') return r.is_timeout;
-        return !r.is_timeout;
-      })
-    : rows;
+  const filteredTransferNos = isTimeout !== undefined && isTimeout !== ''
+    ? orders.filter((o: any) => {
+        const timeout = orderTimeoutMap[o.transfer_no];
+        if (isTimeout === 'true') return timeout;
+        return !timeout;
+      }).map((o: any) => o.transfer_no)
+    : orders.map((o: any) => o.transfer_no);
+
+  const filteredOrders = isTimeout !== undefined && isTimeout !== ''
+    ? orders.filter((o: any) => filteredTransferNos.includes(o.transfer_no))
+    : orders;
+
+  const orderMap = new Map(filteredOrders.map((o: any) => [o.transfer_no, o]));
+
+  const cartons = filteredTransferNos.length > 0
+    ? await db('transfer_cartons')
+        .whereIn('transfer_no', filteredTransferNos)
+        .select([
+          'id',
+          'transfer_no',
+          'carton_no',
+          'departure_time',
+          'arrival_port_time',
+          'customs_clearance_time',
+          'last_mile_pickup_time',
+          'logistics_sign_time',
+          'unload_time',
+          'shelf_time',
+          'checkout_to_sign_days',
+          'sign_to_shelf_days',
+          'unload_to_shelf_days',
+          'is_carton_within_11days',
+          'is_carton_within_7days',
+          'is_carton_within_4days',
+          'is_shelf_within_3days',
+        ])
+    : [];
+
+  const cartonItems = filteredTransferNos.length > 0
+    ? await db('transfer_carton_items')
+        .whereIn('transfer_no', filteredTransferNos)
+        .select([
+          'id',
+          'transfer_no',
+          'carton_no',
+          'sku_code',
+          'sku_name',
+          'overseas_sku_code',
+          'qty',
+        ])
+    : [];
+
+  const cartonItemsByCarton: Record<string, any[]> = {};
+  for (const ci of cartonItems) {
+    if (!cartonItemsByCarton[ci.carton_no]) {
+      cartonItemsByCarton[ci.carton_no] = [];
+    }
+    cartonItemsByCarton[ci.carton_no].push(ci);
+  }
 
   const headers = [
+    '第三方入库单号',
     '调拨单号',
-    '入库单号',
-    '来源仓',
-    '目的仓',
+    '入库单+箱号',
+    '箱号',
+    '系统SKU',
+    '海外仓SKU',
+    '计划数量',
+    '实际发货数量',
     '状态',
-    '运输类型',
-    '物流商',
-    '物流单号',
+    '发货仓',
+    '目的仓',
     '团队',
-    'SKU数量',
-    '总数量',
-    '总箱数',
-    '提货时间',
-    '发车时间',
+    '运输类型',
+    '运输时效要求(天)',
+    '运单号',
+    '收件日期(北京)',
+    '离港时间',
     '到港时间',
     '清关时间',
-    '尾程提货时间',
-    '签收时间',
-    '是否报关',
-    '是否查验',
-    '时效要求天数',
-    '预计到达日期',
+    '尾程提取时间',
+    '签收日期',
+    '卸货时间',
+    '上架时间',
+    '签出-签收时效(天)',
+    '签收-上架时效(天)',
+    '卸货-上架时效(天)',
+    '预计签收时间',
+    '预计上架时间',
+    '上架数量差异',
     '是否物流异常',
-    '物流异常类型',
     '物流异常备注',
-    '是否上架异常',
-    '上架异常类型',
-    '预估单价',
-    '预估运费',
-    '运费币种',
-    '是否对账',
-    '是否付款',
-    '创建时间',
-    '备注',
+    '延迟说明',
+    '是否查验',
+    '是否3天内上架',
+    '单箱是否11天内',
+    '单箱是否7天内',
+    '单箱是否4天内',
+    '尾程',
+    '尾程渠道分类',
   ];
 
-  const sheetData = filtered.map((row: any) => [
-    row.transfer_no,
-    row.inbound_order_no,
-    row.from_warehouse,
-    row.to_warehouse,
-    row.status,
-    row.transport_type,
-    row.logistics_carrier,
-    row.logistics_tracking_no,
-    row.team,
-    row.total_sku_count,
-    row.total_qty,
-    row.total_carton_count,
-    row.pickup_time,
-    row.depart_time,
-    row.arrive_port_time,
-    row.clearance_time,
-    row.last_mile_pickup_time,
-    row.delivery_time,
-    row.is_customs_declared ? '是' : '否',
-    row.is_inspected ? '是' : '否',
-    row.timeline_requirement_days,
-    row.expected_arrival_date,
-    row.is_logistics_abnormal ? '是' : '否',
-    row.logistics_abnormal_type,
-    row.logistics_abnormal_remark,
-    row.is_shelf_abnormal ? '是' : '否',
-    row.shelf_abnormal_type,
-    row.estimated_unit_price,
-    row.estimated_freight,
-    row.freight_currency,
-    row.is_reconciled ? '是' : '否',
-    row.is_paid ? '是' : '否',
-    row.create_time,
-    row.remark,
-  ]);
+  const sheetData: any[][] = [];
+
+  for (const ctn of cartons) {
+    const order = orderMap.get(ctn.transfer_no);
+    if (!order) continue;
+
+    const items = cartonItemsByCarton[ctn.carton_no] || [{}];
+
+    for (const item of items) {
+      const inboundCartonKey = `${order.inbound_order_no}+${ctn.carton_no}`;
+
+      let checkoutToSignDays: number | null = null;
+      if (ctn.departure_time && ctn.logistics_sign_time) {
+        checkoutToSignDays = Math.round((new Date(ctn.logistics_sign_time).getTime() - new Date(ctn.departure_time).getTime()) / 86400000 * 100) / 100;
+      }
+
+      let signToShelfDays: number | null = null;
+      if (ctn.logistics_sign_time && ctn.shelf_time) {
+        signToShelfDays = Math.round((new Date(ctn.shelf_time).getTime() - new Date(ctn.logistics_sign_time).getTime()) / 86400000 * 100) / 100;
+      }
+
+      let unloadToShelfDays: number | null = null;
+      if (ctn.unload_time && ctn.shelf_time) {
+        unloadToShelfDays = Math.round((new Date(ctn.shelf_time).getTime() - new Date(ctn.unload_time).getTime()) / 86400000 * 100) / 100;
+      }
+
+      sheetData.push([
+        order.inbound_order_no,
+        order.transfer_no,
+        inboundCartonKey,
+        ctn.carton_no,
+        item.sku_code || '',
+        item.overseas_sku_code || '',
+        item.qty || 0,
+        item.qty || 0,
+        order.status,
+        order.from_warehouse,
+        order.to_warehouse,
+        order.team,
+        order.transport_type,
+        order.timeline_requirement_days,
+        order.logistics_tracking_no,
+        ctn.logistics_sign_time || order.delivery_time,
+        ctn.departure_time || order.depart_time,
+        ctn.arrival_port_time || order.arrive_port_time,
+        ctn.customs_clearance_time || order.clearance_time,
+        ctn.last_mile_pickup_time || order.last_mile_pickup_time,
+        ctn.logistics_sign_time || order.delivery_time,
+        ctn.unload_time || order.unload_time,
+        ctn.shelf_time || order.shelve_time,
+        checkoutToSignDays ?? ctn.checkout_to_sign_days ?? '',
+        signToShelfDays ?? ctn.sign_to_shelf_days ?? '',
+        unloadToShelfDays ?? ctn.unload_to_shelf_days ?? '',
+        order.expected_arrival_date || '',
+        order.expected_shelf_date || '',
+        '',
+        order.is_logistics_abnormal ? '是' : '否',
+        order.logistics_abnormal_remark || '',
+        order.delay_explanation || '',
+        order.is_inspected ? '是' : '否',
+        ctn.is_shelf_within_3days ? '是' : (signToShelfDays !== null ? (signToShelfDays <= 3 ? '是' : '否') : ''),
+        ctn.is_carton_within_11days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 11 ? '是' : '否') : ''),
+        ctn.is_carton_within_7days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 7 ? '是' : '否') : ''),
+        ctn.is_carton_within_4days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 4 ? '是' : '否') : ''),
+        order.last_mile_type || '',
+        order.last_mile_channel || '',
+      ]);
+    }
+  }
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...sheetData]);

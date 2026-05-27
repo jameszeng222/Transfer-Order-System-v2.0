@@ -6,6 +6,51 @@ import { applyTimeRangeFilters } from '../utils/queryHelpers.js';
 import { requirePermission } from '../middleware/auth.js';
 import XLSX from 'xlsx';
 
+const QUANTITY_THRESHOLD_PCT = 0.05;
+const QUANTITY_THRESHOLD_ABS = 5;
+const AMOUNT_THRESHOLD_PCT = 0.10;
+const TIME_THRESHOLD_DAYS = 3;
+
+const QUANTITY_FIELDS = ['total_qty', 'total_carton_count', 'total_sku_count'];
+const AMOUNT_FIELDS = ['estimated_unit_price', 'estimated_freight', 'total_freight_amount'];
+const TIME_FIELDS = ['pickup_time', 'depart_time', 'arrive_port_time', 'clearance_time', 'last_mile_pickup_time', 'delivery_time', 'unload_time', 'shelve_time'];
+
+function checkLogisticsAbnormal(order: Record<string, any>, today: Date): Record<string, any> {
+  const updates: Record<string, any> = {};
+  if (order.status !== 'IN_TRANSIT') return updates;
+
+  if (order.expected_arrival_date) {
+    const expected = new Date(order.expected_arrival_date);
+    if (today > expected && !order.delivery_time) {
+      updates.is_logistics_abnormal = true;
+      updates.logistics_abnormal_type = 'TIMEOUT_NOT_RECEIVED';
+      return updates;
+    }
+  }
+
+  if (order.arrive_port_time && !order.clearance_time) {
+    const arrivePort = new Date(order.arrive_port_time);
+    const diffDays = (today.getTime() - arrivePort.getTime()) / 86400000;
+    if (diffDays > 7) {
+      updates.is_logistics_abnormal = true;
+      updates.logistics_abnormal_type = 'TIMEOUT_NOT_CLEARED';
+      return updates;
+    }
+  }
+
+  if (order.clearance_time && !order.last_mile_pickup_time) {
+    const clearance = new Date(order.clearance_time);
+    const diffDays = (today.getTime() - clearance.getTime()) / 86400000;
+    if (diffDays > 5) {
+      updates.is_logistics_abnormal = true;
+      updates.logistics_abnormal_type = 'TIMEOUT_NOT_PICKED_UP';
+      return updates;
+    }
+  }
+
+  return updates;
+}
+
 const STATUS_FLOW: Record<string, string[]> = {
   PENDING_OUTBOUND: ['OUTBOUNDED', 'CANCELLED'],
   OUTBOUNDED: ['IN_TRANSIT', 'CANCELLED'],
@@ -53,6 +98,7 @@ const editOrderSchema = z.object({
   delivery_time: z.string().nullable().optional(),
   unload_time: z.string().nullable().optional(),
   shelve_time: z.string().nullable().optional(),
+  reason: z.string().optional(),
 });
 
 orders.get('/', async (c) => {
@@ -153,14 +199,25 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       'pickup_time',
       'delivery_time',
       'shelve_time',
+      'expected_arrival_date',
     ])
     .offset((page - 1) * pageSize)
     .limit(pageSize)
     .orderBy(safeSortBy, safeSortOrder);
 
+  const today = new Date();
+  const dataWithWarning = data.map((row: any) => ({
+    ...row,
+    is_timeout_warning:
+      row.status === 'IN_TRANSIT' &&
+      !!row.expected_arrival_date &&
+      today > new Date(row.expected_arrival_date) &&
+      !row.delivery_time,
+  }));
+
   return c.json({
     success: true,
-    data,
+    data: dataWithWarning,
     pagination: { total, page, pageSize },
   });
 });
@@ -353,6 +410,9 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
   if (newStatus === 'RECEIVED' && !order.delivery_time) updates.delivery_time = now;
   if (newStatus === 'SHELVED' && !order.shelve_time) updates.shelve_time = now;
 
+  const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
+  Object.assign(updates, abnormalUpdates);
+
   await db('transfer_orders').where({ transfer_no: transferNo }).update(updates);
 
   const pickupTime = updates.pickup_time || order.pickup_time;
@@ -459,6 +519,9 @@ orders.put('/batch-status', zValidator('json', z.object({
     if (newStatus === 'RECEIVED' && !order.delivery_time) updates.delivery_time = now;
     if (newStatus === 'SHELVED' && !order.shelve_time) updates.shelve_time = now;
 
+    const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
+    Object.assign(updates, abnormalUpdates);
+
     validUpdates.push({ transferNo, updates, order });
     changeLogEntries.push({
       record_type: 'TRANSFER_ORDER',
@@ -545,7 +608,7 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
   if (!await requirePermission(c, 'order.edit')) {
     return c.json({ success: false, error: '无权限' }, 403);
   }
-  const { transferNo, ...body } = c.req.valid('json');
+  const { transferNo, reason, ...body } = c.req.valid('json');
   const user = c.get('user');
 
   const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
@@ -553,9 +616,28 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
     return c.json({ success: false, error: 'Transfer order not found' }, 404);
   }
 
+  const changedFields = Object.keys(body).filter(
+    (key) => (body as Record<string, any>)[key] !== undefined && String(order[key]) !== String((body as Record<string, any>)[key])
+  );
+
+  if (changedFields.length > 0) {
+    const existingLogs = await db('change_logs')
+      .where({ transfer_no: transferNo })
+      .whereIn('field_name', changedFields)
+      .whereIn('change_source', ['API', 'IMPORT']);
+
+    if (existingLogs.length > 0 && !reason) {
+      return c.json(
+        { success: false, error: '覆盖API/导入数据需要填写变更原因' },
+        400
+      );
+    }
+  }
+
   const now = new Date().toISOString();
   const updates: Record<string, any> = { update_time: now };
   const logEntries: any[] = [];
+  const conflictEntries: any[] = [];
 
   for (const [key, value] of Object.entries(body)) {
     if (value === undefined) continue;
@@ -563,6 +645,38 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
     const newValue = String(value);
     if (String(oldValue) !== newValue) {
       updates[key] = value;
+
+      let isConflict = false;
+
+      if (QUANTITY_FIELDS.includes(key)) {
+        const oldNum = Number(oldValue) || 0;
+        const newNum = Number(value) || 0;
+        const diff = Math.abs(newNum - oldNum);
+        if (diff / Math.max(oldNum, 1) > QUANTITY_THRESHOLD_PCT && diff > QUANTITY_THRESHOLD_ABS) {
+          isConflict = true;
+        }
+      }
+
+      if (AMOUNT_FIELDS.includes(key)) {
+        const oldNum = Number(oldValue) || 0;
+        const newNum = Number(value) || 0;
+        const diff = Math.abs(newNum - oldNum);
+        if (diff / Math.max(oldNum, 1) > AMOUNT_THRESHOLD_PCT) {
+          isConflict = true;
+        }
+      }
+
+      if (TIME_FIELDS.includes(key)) {
+        if (oldValue && value) {
+          const oldDate = new Date(oldValue);
+          const newDate = new Date(value as string);
+          const diffDays = Math.abs(newDate.getTime() - oldDate.getTime()) / 86400000;
+          if (diffDays > TIME_THRESHOLD_DAYS) {
+            isConflict = true;
+          }
+        }
+      }
+
       logEntries.push({
         record_type: 'transfer_order',
         record_id: order.id,
@@ -573,9 +687,22 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
         change_source: 'MANUAL',
         operator: user?.username || 'unknown',
         change_time: now,
+        reason: isConflict ? 'CONFLICT_DETECTED:threshold_exceeded' : (reason || null),
       });
+
+      if (isConflict) {
+        conflictEntries.push({
+          field: key,
+          old_value: oldValue,
+          new_value: value,
+          reason: 'CONFLICT_DETECTED:threshold_exceeded',
+        });
+      }
     }
   }
+
+  const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
+  Object.assign(updates, abnormalUpdates);
 
   if (Object.keys(updates).length > 1) {
     await db('transfer_orders').where({ transfer_no: transferNo }).update(updates);
@@ -585,7 +712,7 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
   }
 
   const updated = await db('transfer_orders').where({ transfer_no: transferNo }).first();
-  return c.json({ success: true, data: updated });
+  return c.json({ success: true, data: updated, conflicts: conflictEntries });
 });
 
 export default orders;

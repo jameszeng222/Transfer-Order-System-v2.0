@@ -24,6 +24,7 @@ interface OrderRow {
   is_logistics_abnormal: number;
   is_shelf_abnormal: number;
   is_reconciled: number;
+  is_timeout_warning: boolean;
   create_time: string;
   pickup_time: string;
   delivery_time: string;
@@ -315,9 +316,12 @@ export default function OrderListPage() {
       key: 'status',
       title: '状态',
       render: (_, row) => (
-        <Badge variant={STATUS_BADGE_MAP[row.status as string] || 'pending'}>
-          {TransferStatusLabel[row.status as TransferStatus] || (row.status as string)}
-        </Badge>
+        <span className="inline-flex items-center gap-1.5">
+          <Badge variant={STATUS_BADGE_MAP[row.status as string] || 'pending'}>
+            {TransferStatusLabel[row.status as TransferStatus] || (row.status as string)}
+          </Badge>
+          {row.is_timeout_warning && <Badge variant="abnormal">超时</Badge>}
+        </span>
       ),
     },
     {
