@@ -242,10 +242,49 @@ export default function OrderDetailPage() {
   const [nodeEditValue, setNodeEditValue] = useState('');
   const [nodeEditSubmitting, setNodeEditSubmitting] = useState(false);
 
+  const NODE_STATUS_MAP: Record<string, TransferStatus> = {
+    pickup_time: 'IN_TRANSIT',
+    delivery_time: 'RECEIVED',
+    shelve_time: 'SHELVED',
+  };
+
   const openNodeEdit = (field: string, currentValue: string) => {
     setNodeEditField(field);
     setNodeEditValue(currentValue ? new Date(currentValue).toISOString().slice(0, 16) : '');
     setNodeEditOpen(true);
+  };
+
+  const handleNodeStatusChange = async (field: string) => {
+    const targetStatus = NODE_STATUS_MAP[field];
+    if (!targetStatus || !transferNo || !order) return;
+    const nodeLabel = TIMELINE_NODES.find(n => n.timeField === field)?.label || field;
+    const statusLabel = TransferStatusLabel[targetStatus];
+    if (!confirm(`确认将状态变更为「${statusLabel}」？\n将自动填充${nodeLabel}时间为当前时间`)) return;
+    setActionLoading(true);
+    try {
+      const now = new Date().toISOString();
+      const res = await api.put<{ success: boolean; error?: string }>('/orders/edit', {
+        transferNo,
+        [field]: now,
+      });
+      if (res.success) {
+        const statusRes = await api.put<{ success: boolean; error?: string }>('/orders/status', {
+          transferNo,
+          status: targetStatus,
+        });
+        if (statusRes.success) {
+          await fetchOrder(transferNo);
+        } else {
+          alert(statusRes.error || '状态更新失败');
+        }
+      } else {
+        alert(res.error || '时间更新失败');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '操作失败');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleNodeEditSubmit = async () => {
@@ -454,28 +493,43 @@ export default function OrderDetailPage() {
       <div className="px-7 space-y-4">
         <Card title="物流节点" actions={<Button variant="secondary" size="sm">导入物流节点</Button>}>
           <div className="px-5 py-4 flex items-center overflow-x-auto">
-            {timelineData.map((node, idx) => (
-              <div key={node.key} className="flex items-center">
-                <div
-                  className="flex flex-col items-center min-w-[72px] cursor-pointer group"
-                  onClick={() => openNodeEdit(node.timeField, order[node.timeField] || '')}
-                  title="点击编辑时间"
-                >
-                  <div className={`w-2.5 h-2.5 rounded-full mb-1.5 z-[2] ${
-                    idx < currentIdx ? 'bg-green' :
-                    idx === currentIdx ? 'bg-accent shadow-[0_0_0_3px_var(--accent-light)]' :
-                    'bg-border'
-                  }`} />
-                  <div className="text-[11px] text-text-tertiary text-center">{node.label}</div>
-                  <div className="text-[10px] text-text-tertiary mt-0.5 group-hover:text-accent transition-colors">
-                    {idx <= currentIdx ? node.time : idx === currentIdx + 1 ? '待提取' : '—'}
+            {timelineData.map((node, idx) => {
+              const isNextNode = idx === currentIdx + 1;
+              const canTriggerStatus = NODE_STATUS_MAP[node.timeField] && !node.hasTime && isNextNode;
+              return (
+                <div key={node.key} className="flex items-center">
+                  <div
+                    className={`flex flex-col items-center min-w-[72px] ${canTriggerStatus ? 'cursor-pointer' : node.hasTime ? 'cursor-pointer group' : ''}`}
+                    onClick={() => {
+                      if (canTriggerStatus) {
+                        handleNodeStatusChange(node.timeField);
+                      } else if (node.hasTime) {
+                        openNodeEdit(node.timeField, order[node.timeField] || '');
+                      }
+                    }}
+                    title={canTriggerStatus ? '点击确认到达此节点' : node.hasTime ? '点击编辑时间' : undefined}
+                  >
+                    <div className={`w-2.5 h-2.5 rounded-full mb-1.5 z-[2] ${
+                      idx < currentIdx ? 'bg-green' :
+                      idx === currentIdx ? 'bg-accent shadow-[0_0_0_3px_var(--accent-light)]' :
+                      isNextNode && canTriggerStatus ? 'bg-accent/40 shadow-[0_0_0_3px_var(--accent-light)]' :
+                      'bg-border'
+                    }`} />
+                    <div className="text-[11px] text-text-tertiary text-center">{node.label}</div>
+                    <div className={`text-[10px] mt-0.5 ${
+                      node.hasTime ? 'text-text-tertiary group-hover:text-accent transition-colors' :
+                      canTriggerStatus ? 'text-accent font-medium' :
+                      'text-text-tertiary'
+                    }`}>
+                      {node.hasTime ? node.time : canTriggerStatus ? '确认到达' : '—'}
+                    </div>
                   </div>
+                  {idx < timelineData.length - 1 && (
+                    <div className={`flex-1 h-0.5 min-w-[20px] ${idx < currentIdx ? 'bg-green' : 'bg-border'}`} />
+                  )}
                 </div>
-                {idx < timelineData.length - 1 && (
-                  <div className={`flex-1 h-0.5 min-w-[20px] ${idx < currentIdx ? 'bg-green' : 'bg-border'}`} />
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
 
@@ -517,8 +571,8 @@ export default function OrderDetailPage() {
                   <span className="text-text-secondary text-right">{ct.logistics_tracking_no || '—'}</span>
                   <span className="text-text-tertiary">箱规</span>
                   <span className="text-text-secondary text-right">{ct.carton_length ? `${ct.carton_length}×${ct.carton_width}×${ct.carton_height}cm` : '—'}</span>
-                  <span className="text-text-tertiary">申报货值</span>
-                  <span className="text-text-secondary text-right">{ct.declared_value ? `¥${ct.declared_value.toLocaleString()}` : '—'}</span>
+                  <span className="text-text-tertiary">重量</span>
+                  <span className="text-text-secondary text-right">{ct.carton_weight ? `${ct.carton_weight}kg` : '—'}</span>
                   <span className="text-text-tertiary">签收-上架</span>
                   <span className="text-text-secondary text-right">{ct.shelf_time ? '已上架' : '未上架'}</span>
                 </div>

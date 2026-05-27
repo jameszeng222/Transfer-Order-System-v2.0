@@ -270,23 +270,13 @@ tracking.get('/export', async (c) => {
   const logisticsCarrier = c.req.query('logistics_carrier');
   const team = c.req.query('team');
 
-  let query = db('transfer_orders').where('status', 'IN_TRANSIT');
+  let query = db('transfer_orders').whereIn('status', ['IN_TRANSIT', 'RECEIVED']);
 
-  if (fromWarehouse) {
-    query = query.where('from_warehouse', fromWarehouse);
-  }
-  if (toWarehouse) {
-    query = query.where('to_warehouse', toWarehouse);
-  }
-  if (transportType) {
-    query = query.where('transport_type', transportType);
-  }
-  if (logisticsCarrier) {
-    query = query.where('logistics_carrier', logisticsCarrier);
-  }
-  if (team) {
-    query = query.where('team', team);
-  }
+  if (fromWarehouse) query = query.where('from_warehouse', fromWarehouse);
+  if (toWarehouse) query = query.where('to_warehouse', toWarehouse);
+  if (transportType) query = query.where('transport_type', transportType);
+  if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
+  if (team) query = query.where('team', team);
 
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
 

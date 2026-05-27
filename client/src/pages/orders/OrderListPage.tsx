@@ -313,6 +313,17 @@ export default function OrderListPage() {
     { key: 'total_carton_count', title: '箱数' },
     { key: 'total_qty', title: '计划数量' },
     {
+      key: 'create_time',
+      title: '创建时间',
+      render: (_, row) => {
+        const val = row.create_time as string;
+        if (!val) return <span className="text-text-tertiary">—</span>;
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return <span className="text-text-tertiary">—</span>;
+        return <span className="text-xs tabular-nums">{d.toLocaleDateString('zh-CN')}</span>;
+      },
+    },
+    {
       key: 'status',
       title: '状态',
       render: (_, row) => (

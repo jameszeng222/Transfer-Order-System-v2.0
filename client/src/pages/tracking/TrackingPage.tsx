@@ -190,16 +190,30 @@ export default function TrackingPage() {
     if (filters.to_warehouse) params.set('to_warehouse', filters.to_warehouse);
     if (filters.transport_type) params.set('transport_type', filters.transport_type);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
+    if (filters.logistics_carrier) params.set('logistics_carrier', filters.logistics_carrier);
+    if (filters.team) params.set('team', filters.team);
     const token = localStorage.getItem('token');
-    const res = await fetch(`${API_BASE}/tracking/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = '在途明细.xlsx';
-    a.click();
-    window.URL.revokeObjectURL(url);
+    try {
+      const res = await fetch(`${API_BASE}/tracking/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        const text = await res.text();
+        alert('导出失败: ' + (text || res.statusText));
+        return;
+      }
+      const blob = await res.blob();
+      if (blob.size === 0) {
+        alert('导出数据为空');
+        return;
+      }
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '在途明细.xlsx';
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '导出失败');
+    }
   }, [filters]);
 
   const handleSlaCheck = useCallback(async () => {
