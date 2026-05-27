@@ -278,6 +278,12 @@ tracking.get('/export', async (c) => {
   if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
   if (team) query = query.where('team', team);
 
+  const transferNosParam = c.req.query('transfer_nos');
+  if (transferNosParam) {
+    const transferNos = transferNosParam.split(',').filter(Boolean);
+    query = query.whereIn('transfer_no', transferNos);
+  }
+
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
 
   const orders = await query.clone().select([
@@ -503,10 +509,13 @@ tracking.get('/export', async (c) => {
 
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  c.header('Content-Disposition', 'attachment; filename=intransit_export.xlsx');
-
-  return c.body(buf);
+  return new Response(buf, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename=intransit_export.xlsx',
+    },
+  });
 });
 
 tracking.get('/sla-check', async (c) => {

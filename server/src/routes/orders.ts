@@ -284,6 +284,12 @@ orders.get('/export', async (c) => {
   if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
   query = applyTimeRangeFilters(query, c);
 
+  const transferNosParam = c.req.query('transfer_nos');
+  if (transferNosParam) {
+    const transferNos = transferNosParam.split(',').filter(Boolean);
+    query = query.whereIn('transfer_no', transferNos);
+  }
+
   const data = await query
     .select([
       'transfer_no',

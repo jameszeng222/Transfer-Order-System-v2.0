@@ -95,6 +95,7 @@ export default function TrackingPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
   const [timeFilters, setTimeFilters] = useState({ ...DEFAULT_TIME_FILTERS });
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     api.get<{ success: boolean; data: Warehouse[] }>('/warehouses?pageSize=100')
@@ -176,12 +177,14 @@ export default function TrackingPage() {
 
   const handleSearch = useCallback(() => {
     setRefreshKey((k) => k + 1);
+    setSelectedKeys(new Set());
   }, []);
 
   const handleReset = useCallback(() => {
     setFilters({ ...DEFAULT_FILTERS });
     setTimeFilters({ ...DEFAULT_TIME_FILTERS });
     setPage(1);
+    setSelectedKeys(new Set());
   }, []);
 
   const handleExport = useCallback(async () => {
@@ -192,6 +195,7 @@ export default function TrackingPage() {
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
     if (filters.logistics_carrier) params.set('logistics_carrier', filters.logistics_carrier);
     if (filters.team) params.set('team', filters.team);
+    if (selectedKeys.size > 0) params.set('transfer_nos', Array.from(selectedKeys).join(','));
     const token = localStorage.getItem('token');
     try {
       const res = await fetch(`${API_BASE}/tracking/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -214,7 +218,7 @@ export default function TrackingPage() {
     } catch (err) {
       alert(err instanceof Error ? err.message : '导出失败');
     }
-  }, [filters]);
+  }, [filters, selectedKeys]);
 
   const handleSlaCheck = useCallback(async () => {
     try {
@@ -404,7 +408,7 @@ export default function TrackingPage() {
       </Card>
 
       <Card>
-        <Table columns={columns} data={data as unknown as Record<string, unknown>[]} loading={loading} />
+        <Table columns={columns} data={data as unknown as Record<string, unknown>[]} loading={loading} selectable rowKey="transfer_no" selectedKeys={selectedKeys} onSelectionChange={setSelectedKeys} />
       </Card>
 
       <Pagination current={page} pageSize={pageSize} total={total} onChange={setPage} />

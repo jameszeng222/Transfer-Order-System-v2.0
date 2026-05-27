@@ -121,7 +121,7 @@ export default function OrderListPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
   const [timeFilters, setTimeFilters] = useState({ ...DEFAULT_TIME_FILTERS });
-  const [selectedNos, setSelectedNos] = useState<string[]>([]);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
 
   useEffect(() => {
@@ -190,12 +190,14 @@ export default function OrderListPage() {
 
   const handleSearch = useCallback(() => {
     setRefreshKey((k) => k + 1);
+    setSelectedKeys(new Set());
   }, []);
 
   const handleReset = useCallback(() => {
     setFilters({ ...DEFAULT_FILTERS });
     setTimeFilters({ ...DEFAULT_TIME_FILTERS });
     setPage(1);
+    setSelectedKeys(new Set());
   }, []);
 
   const handleExport = useCallback(async () => {
@@ -207,6 +209,7 @@ export default function OrderListPage() {
     if (filters.source) params.set('source', filters.source);
     if (filters.team) params.set('team', filters.team);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
+    if (selectedKeys.size > 0) params.set('transfer_nos', Array.from(selectedKeys).join(','));
     const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE}/orders/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return;
@@ -217,7 +220,7 @@ export default function OrderListPage() {
     a.download = '调拨单列表.xlsx';
     a.click();
     window.URL.revokeObjectURL(url);
-  }, [filters]);
+  }, [filters, selectedKeys]);
 
   const handleStatusChange = async (transferNo: string, newStatus: TransferStatus) => {
     const label = NEXT_STATUS_LABELS[newStatus] || newStatus;
@@ -233,18 +236,18 @@ export default function OrderListPage() {
 
   const handleBatchStatusChange = async (newStatus: TransferStatus) => {
     const label = NEXT_STATUS_LABELS[newStatus] || newStatus;
-    if (!confirm(`确认对 ${selectedNos.length} 个调拨单执行「${label}」操作？`)) return;
+    if (!confirm(`确认对 ${selectedKeys.size} 个调拨单执行「${label}」操作？`)) return;
     setBatchLoading(true);
     try {
-      const res = await api.put<{ success: boolean; error?: string }>('/orders/batch-status', { transferNos: selectedNos, status: newStatus });
-      if (res.success) { setSelectedNos([]); setRefreshKey(k => k + 1); }
+      const res = await api.put<{ success: boolean; error?: string }>('/orders/batch-status', { transferNos: Array.from(selectedKeys), status: newStatus });
+      if (res.success) { setSelectedKeys(new Set()); setRefreshKey(k => k + 1); }
       else alert(res.error || '操作失败');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : '操作失败');
     } finally { setBatchLoading(false); }
   };
 
-  const selectedOrders = data.filter(r => selectedNos.includes(r.transfer_no));
+  const selectedOrders = data.filter(r => selectedKeys.has(r.transfer_no));
 
   const getBatchActions = (orders: OrderRow[]) => {
     if (orders.length === 0) return [];
@@ -260,21 +263,6 @@ export default function OrderListPage() {
   };
 
   const columns: ColumnDef[] = [
-    {
-      key: '_select',
-      title: '',
-      width: '36px',
-      render: (_, row) => (
-        <input
-          type="checkbox"
-          checked={selectedNos.includes(row.transfer_no as string)}
-          onChange={e => {
-            if (e.target.checked) setSelectedNos(prev => [...prev, row.transfer_no as string]);
-            else setSelectedNos(prev => prev.filter(n => n !== row.transfer_no as string));
-          }}
-        />
-      ),
-    },
     {
       key: 'inbound_order_no',
       title: '第三方入库单号',
@@ -476,15 +464,15 @@ export default function OrderListPage() {
         </div>
       </Card>
 
-      {selectedNos.length > 0 && (
+      {selectedKeys.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-          <span className="text-xs text-blue-700">已选择 {selectedNos.length} 项</span>
+          <span className="text-xs text-blue-700">已选择 {selectedKeys.size} 项</span>
           {getBatchActions(selectedOrders).map(action => (
             <Button key={action.value} size="sm" onClick={() => handleBatchStatusChange(action.value as TransferStatus)} loading={batchLoading}>
               {action.label}
             </Button>
           ))}
-          <Button variant="ghost" size="sm" onClick={() => setSelectedNos([])}>取消选择</Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedKeys(new Set())}>取消选择</Button>
         </div>
       )}
 
@@ -496,7 +484,7 @@ export default function OrderListPage() {
       </div>
 
       <Card>
-        <Table columns={columns} data={data as unknown as Record<string, unknown>[]} loading={loading} />
+        <Table columns={columns} data={data as unknown as Record<string, unknown>[]} loading={loading} selectable rowKey="transfer_no" selectedKeys={selectedKeys} onSelectionChange={setSelectedKeys} />
       </Card>
 
       <Pagination current={page} pageSize={pageSize} total={total} onChange={setPage} />
