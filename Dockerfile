@@ -16,8 +16,6 @@ COPY shared ./shared
 
 RUN mkdir -p /app/data
 
-VOLUME /app/data
-
 ENV PORT=3001
 EXPOSE 3001
 
