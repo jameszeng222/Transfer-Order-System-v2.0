@@ -456,8 +456,8 @@ export default function OrderDetailPage() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-bg-card border-b border-border">
-        <div className="px-7 pt-5 pb-4 flex items-center gap-4">
+      <div className="bg-bg-card border border-border rounded-xl">
+        <div className="px-5 pt-4 pb-3 flex items-center gap-4 border-b border-border-light">
           <Button variant="secondary" size="sm" icon={ArrowLeft} onClick={() => navigate('/orders')} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
@@ -473,11 +473,11 @@ export default function OrderDetailPage() {
             )}
           </div>
         </div>
-        <div className="px-7 pb-5 grid grid-cols-5 gap-6">
+        <div className="px-5 py-4 grid grid-cols-5 gap-6">
           {metaGroups.map((group) => (
             <div key={group.title}>
-              <div className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider mb-2.5">{group.title}</div>
-              <div className="space-y-2">
+              <div className="text-[10px] font-semibold text-accent uppercase tracking-wider mb-3">{group.title}</div>
+              <div className="space-y-2.5">
                 {group.items.map((item) => (
                   <div key={item.label} className="flex items-baseline justify-between gap-2">
                     <span className="text-[11px] text-text-tertiary shrink-0">{item.label}</span>
@@ -490,7 +490,7 @@ export default function OrderDetailPage() {
         </div>
       </div>
 
-      <div className="px-7 space-y-4">
+      <div className="space-y-4">
         <Card title="物流节点" actions={<Button variant="secondary" size="sm">导入物流节点</Button>}>
           <div className="px-5 py-4 flex items-center overflow-x-auto">
             {timelineData.map((node, idx) => {
