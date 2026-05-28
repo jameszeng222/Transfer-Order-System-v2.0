@@ -4,8 +4,6 @@ import { requirePermission } from '../middleware/auth.js';
 import {
   importExcel,
   importInboundReturn,
-  importLogisticsInfo,
-  importLogisticsEvents,
   importLogisticsMerged,
   processFreightImport,
   generateTemplate,
