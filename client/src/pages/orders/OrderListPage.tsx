@@ -27,8 +27,8 @@ interface OrderRow {
   is_timeout_warning: boolean;
   create_time: string;
   pickup_time: string;
-  delivery_time: string;
-  shelve_time: string;
+  logistics_sign_time: string;
+  shelf_time: string;
   expected_arrival_date: string;
 }
 
@@ -103,10 +103,10 @@ const STATUS_FLOW: Record<string, string[]> = {
 
 const DEFAULT_TIME_FILTERS = {
   createTimeRange: { start: '', end: '' },
-  departTimeRange: { start: '', end: '' },
+  departureTimeRange: { start: '', end: '' },
   pickupTimeRange: { start: '', end: '' },
-  deliveryTimeRange: { start: '', end: '' },
-  shelveTimeRange: { start: '', end: '' },
+  logisticsSignTimeRange: { start: '', end: '' },
+  shelfTimeRange: { start: '', end: '' },
 };
 
 export default function OrderListPage() {
@@ -150,14 +150,14 @@ export default function OrderListPage() {
     if (filters.logistics_carrier) params.set('logistics_carrier', filters.logistics_carrier);
     if (timeFilters.createTimeRange.start) params.set('create_time_start', timeFilters.createTimeRange.start);
     if (timeFilters.createTimeRange.end) params.set('create_time_end', timeFilters.createTimeRange.end);
-    if (timeFilters.departTimeRange.start) params.set('depart_time_start', timeFilters.departTimeRange.start);
-    if (timeFilters.departTimeRange.end) params.set('depart_time_end', timeFilters.departTimeRange.end);
+    if (timeFilters.departureTimeRange.start) params.set('departure_time_start', timeFilters.departureTimeRange.start);
+    if (timeFilters.departureTimeRange.end) params.set('departure_time_end', timeFilters.departureTimeRange.end);
     if (timeFilters.pickupTimeRange.start) params.set('pickup_time_start', timeFilters.pickupTimeRange.start);
     if (timeFilters.pickupTimeRange.end) params.set('pickup_time_end', timeFilters.pickupTimeRange.end);
-    if (timeFilters.deliveryTimeRange.start) params.set('delivery_time_start', timeFilters.deliveryTimeRange.start);
-    if (timeFilters.deliveryTimeRange.end) params.set('delivery_time_end', timeFilters.deliveryTimeRange.end);
-    if (timeFilters.shelveTimeRange.start) params.set('shelve_time_start', timeFilters.shelveTimeRange.start);
-    if (timeFilters.shelveTimeRange.end) params.set('shelve_time_end', timeFilters.shelveTimeRange.end);
+    if (timeFilters.logisticsSignTimeRange.start) params.set('logistics_sign_time_start', timeFilters.logisticsSignTimeRange.start);
+    if (timeFilters.logisticsSignTimeRange.end) params.set('logistics_sign_time_end', timeFilters.logisticsSignTimeRange.end);
+    if (timeFilters.shelfTimeRange.start) params.set('shelf_time_start', timeFilters.shelfTimeRange.start);
+    if (timeFilters.shelfTimeRange.end) params.set('shelf_time_end', timeFilters.shelfTimeRange.end);
 
     api.get<{
       success: boolean;

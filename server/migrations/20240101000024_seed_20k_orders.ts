@@ -167,15 +167,15 @@ export async function up(knex: Knex): Promise<void> {
       is_reconciled: isReconciled ? 1 : 0,
       is_paid: isPaid ? 1 : 0,
       create_time: createTime,
-      depart_time: departTime,
+      departure_time: departTime,
       pickup_time: pickupTime,
-      arrive_port_time: arrivePortTime,
-      clearance_time: clearanceTime,
+      arrival_port_time: arrivePortTime,
+      customs_clearance_time: clearanceTime,
       last_mile_pickup_time: lastMilePickupTime,
-      delivery_time: deliveryTime,
+      logistics_sign_time: deliveryTime,
       unload_time: unloadTime,
-      shelve_time: shelveTime,
-      update_time: shelveTime || deliveryTime || departTime || createTime,
+      shelf_time: shelveTime,
+      update_time: shelveTime || unloadTime || deliveryTime || departTime || createTime,
     });
 
     let itemTotalQty = 0;

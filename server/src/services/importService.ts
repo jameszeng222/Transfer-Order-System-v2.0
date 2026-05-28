@@ -21,11 +21,11 @@ const LOGISTICS_COLUMN_MAP: Record<string, string> = {
   '物流商': 'logistics_carrier',
   '物流单号': 'logistics_tracking_no',
   '提货时间': 'pickup_time',
-  '离港时间': 'depart_time',
-  '到港时间': 'arrive_port_time',
-  '清关时间': 'clearance_time',
+  '离港时间': 'departure_time',
+  '到港时间': 'arrival_port_time',
+  '清关时间': 'customs_clearance_time',
   '尾程提取时间': 'last_mile_pickup_time',
-  '签收时间': 'delivery_time',
+  '签收时间': 'logistics_sign_time',
   '是否报关': 'is_customs_declared',
   '报关工厂': 'customs_factory',
   '是否查验': 'is_inspected',
@@ -57,13 +57,13 @@ const LOGISTICS_MERGED_COLUMN_MAP: Record<string, string> = {
   '物流商': 'logistics_carrier',
   '物流单号': 'logistics_tracking_no',
   '收件时间': 'pickup_time',
-  '离港时间': 'depart_time',
-  '到港时间': 'arrive_port_time',
-  '清关时间': 'clearance_time',
+  '离港时间': 'departure_time',
+  '到港时间': 'arrival_port_time',
+  '清关时间': 'customs_clearance_time',
   '尾程提取时间': 'last_mile_pickup_time',
-  '签收时间': 'delivery_time',
+  '签收时间': 'logistics_sign_time',
   '卸货时间': 'unload_time',
-  '上架时间': 'shelve_time',
+  '上架时间': 'shelf_time',
   '是否报关': 'is_customs_declared',
   '报关工厂': 'customs_factory',
   '是否查验': 'is_inspected',
@@ -82,13 +82,13 @@ const LOGISTICS_MERGED_COLUMN_MAP: Record<string, string> = {
 };
 
 const CARTON_TIME_MAP: Record<string, string> = {
-  depart_time: 'departure_time',
-  arrive_port_time: 'arrival_port_time',
-  clearance_time: 'customs_clearance_time',
+  departure_time: 'departure_time',
+  arrival_port_time: 'arrival_port_time',
+  customs_clearance_time: 'customs_clearance_time',
   last_mile_pickup_time: 'last_mile_pickup_time',
-  delivery_time: 'logistics_sign_time',
+  logistics_sign_time: 'logistics_sign_time',
   unload_time: 'unload_time',
-  shelve_time: 'shelf_time',
+  shelf_time: 'shelf_time',
 };
 
 const FREIGHT_COLUMN_MAP: Record<string, string> = {
@@ -125,7 +125,7 @@ const COLUMN_MAP: Record<string, string> = {
   '报关工厂': 'customs_factory',
   '是否查验': 'is_inspected',
   '时效要求(天)': 'timeline_requirement_days',
-  '订单备注': 'order_remark',
+  '订单备注': 'remark',
   '尾程类型': 'last_mile_type',
   '尾程渠道': 'last_mile_channel',
   '预估单价': 'estimated_unit_price',
@@ -133,7 +133,7 @@ const COLUMN_MAP: Record<string, string> = {
   '运费分摊方式': 'freight_allocation_method',
   '备注': 'remark',
   '创建时间': 'create_time',
-  '出库时间': 'depart_time',
+  '出库时间': 'departure_time',
 };
 
 const TRANSPORT_TYPE_MAP: Record<string, string> = {
@@ -170,10 +170,10 @@ const ORDER_LEVEL_FIELDS = [
   'team', 'source', 'transfer_type', 'transport_type',
   'logistics_tracking_no', 'logistics_carrier',
   'is_customs_declared', 'customs_factory', 'is_inspected',
-  'timeline_requirement_days', 'order_remark',
+  'timeline_requirement_days', 'remark',
   'last_mile_type', 'last_mile_channel',
   'estimated_unit_price', 'freight_currency', 'freight_allocation_method', 'remark',
-  'create_time', 'depart_time',
+  'create_time', 'departure_time',
 ];
 
 interface RowError {
@@ -225,7 +225,7 @@ function mapChineseValue(field: string, value: any): any {
     if (isNaN(num)) return undefined;
     return num;
   }
-  if (field === 'create_time' || field === 'depart_time') {
+  if (field === 'create_time' || field === 'departure_time') {
     return parseExcelDate(value);
   }
   return value;
@@ -362,13 +362,13 @@ async function processOrderGroup(
       update_time: new Date().toISOString(),
     };
     for (const field of ORDER_LEVEL_FIELDS) {
-      if (field === 'create_time' || field === 'depart_time') continue;
+      if (field === 'create_time' || field === 'departure_time') continue;
       if (firstRow[field] !== undefined && firstRow[field] !== null && firstRow[field] !== '') {
         orderData[field] = firstRow[field];
       }
     }
-    if (firstRow.depart_time !== undefined && firstRow.depart_time !== null && firstRow.depart_time !== '') {
-      orderData.depart_time = firstRow.depart_time;
+    if (firstRow.departure_time !== undefined && firstRow.departure_time !== null && firstRow.departure_time !== '') {
+      orderData.departure_time = firstRow.departure_time;
     }
     const [inserted] = await trx('transfer_orders').insert(orderData).returning('*');
 
@@ -960,7 +960,7 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
 
         if (hasInboundQty && order.status === 'IN_TRANSIT') {
           orderUpdates.status = 'RECEIVED';
-          orderUpdates.delivery_time = new Date().toISOString();
+          orderUpdates.logistics_sign_time = new Date().toISOString();
         }
 
         orderUpdateList.push({ id: order.id, data: orderUpdates });
@@ -1041,8 +1041,8 @@ export async function importLogisticsInfo(buffer: ArrayBuffer, operator: string)
 
   const LOGISTICS_FIELDS = [
     'logistics_carrier', 'logistics_tracking_no',
-    'pickup_time', 'depart_time', 'arrive_port_time', 'clearance_time',
-    'last_mile_pickup_time', 'delivery_time',
+    'pickup_time', 'departure_time', 'arrival_port_time', 'customs_clearance_time',
+    'last_mile_pickup_time', 'logistics_sign_time',
     'is_customs_declared', 'customs_factory', 'is_inspected',
     'last_mile_type', 'last_mile_channel',
   ];
@@ -1086,7 +1086,7 @@ export async function importLogisticsInfo(buffer: ArrayBuffer, operator: string)
         if (order.status === 'OUTBOUNDED' && orderUpdates.pickup_time) {
           orderUpdates.status = 'IN_TRANSIT';
         }
-        if (order.status === 'IN_TRANSIT' && orderUpdates.delivery_time) {
+        if (order.status === 'IN_TRANSIT' && orderUpdates.logistics_sign_time) {
           orderUpdates.status = 'RECEIVED';
         }
 
@@ -1241,10 +1241,10 @@ function calcDaysDiff(start: string | null, end: string | null): number | null {
 
 function computeCartonTimeStats(carton: any, orderUpdates: Record<string, any>): Record<string, any> {
   const stats: Record<string, any> = {};
-  const depart = orderUpdates.depart_time || carton.departure_time;
-  const sign = orderUpdates.delivery_time || carton.logistics_sign_time;
+  const depart = orderUpdates.departure_time || carton.departure_time;
+  const sign = orderUpdates.logistics_sign_time || carton.logistics_sign_time;
   const unload = orderUpdates.unload_time || carton.unload_time;
-  const shelf = orderUpdates.shelve_time || carton.shelf_time;
+  const shelf = orderUpdates.shelf_time || carton.shelf_time;
 
   const c2s = calcDaysDiff(depart, sign);
   if (c2s !== null) stats.checkout_to_sign_days = c2s;
@@ -1305,8 +1305,8 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
 
   const LOGISTICS_FIELDS = [
     'logistics_carrier', 'logistics_tracking_no',
-    'pickup_time', 'depart_time', 'arrive_port_time', 'clearance_time',
-    'last_mile_pickup_time', 'delivery_time', 'unload_time', 'shelve_time',
+    'pickup_time', 'departure_time', 'arrival_port_time', 'customs_clearance_time',
+    'last_mile_pickup_time', 'logistics_sign_time', 'unload_time', 'shelf_time',
     'is_customs_declared', 'customs_factory', 'is_inspected',
     'last_mile_type', 'last_mile_channel',
   ];
@@ -1360,7 +1360,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
         if (order.status === 'OUTBOUNDED' && orderUpdates.pickup_time) {
           orderUpdates.status = 'IN_TRANSIT';
         }
-        if (order.status === 'IN_TRANSIT' && orderUpdates.delivery_time) {
+        if (order.status === 'IN_TRANSIT' && orderUpdates.logistics_sign_time) {
           orderUpdates.status = 'RECEIVED';
         }
 

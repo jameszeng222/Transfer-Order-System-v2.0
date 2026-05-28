@@ -20,14 +20,14 @@ interface OrderDetail {
   total_carton_count: number; logistics_status: string; expected_arrival_date: string; actual_arrival_date: string;
   expected_shelf_date: string; logistics_carrier: string; logistics_tracking_no: string;
   is_customs_declared: number; customs_factory: string; is_inspected: number; timeline_requirement_days: number;
-  order_remark: string; last_mile_type: string; last_mile_channel: string; pickup_time: string;
-  depart_time: string; arrive_port_time: string; clearance_time: string; last_mile_pickup_time: string;
-  delivery_time: string; unload_time: string; shelve_time: string;
+  remark: string; last_mile_type: string; last_mile_channel: string; pickup_time: string;
+  departure_time: string; arrival_port_time: string; customs_clearance_time: string; last_mile_pickup_time: string;
+  logistics_sign_time: string; unload_time: string; shelf_time: string;
   is_logistics_abnormal: number; logistics_abnormal_type: string; logistics_abnormal_remark: string;
   is_shelf_abnormal: number; shelf_abnormal_type: string; shelf_abnormal_remark: string;
   delay_explanation: string; estimated_unit_price: number; estimated_freight: number; total_freight_amount: number;
   freight_currency: string; freight_allocation_method: string; is_reconciled: number; is_paid: number;
-  create_time: string; update_time: string; remark: string;
+  create_time: string; update_time: string;
   items: OrderItem[]; cartons: Carton[]; tracking_events: TrackingEvent[]; change_logs: ChangeLog[];
 }
 
@@ -46,13 +46,13 @@ const NEXT_STATUS: Record<string, { label: string; value: TransferStatus }> = {
 
 const TIMELINE_NODES = [
   { key: 'pickup', label: '收件', timeField: 'pickup_time' as const },
-  { key: 'depart', label: '离港', timeField: 'depart_time' as const },
-  { key: 'arrive_port', label: '到港', timeField: 'arrive_port_time' as const },
-  { key: 'clearance', label: '清关', timeField: 'clearance_time' as const },
+  { key: 'depart', label: '离港', timeField: 'departure_time' as const },
+  { key: 'arrive_port', label: '到港', timeField: 'arrival_port_time' as const },
+  { key: 'clearance', label: '清关', timeField: 'customs_clearance_time' as const },
   { key: 'last_mile', label: '提取', timeField: 'last_mile_pickup_time' as const },
-  { key: 'delivery', label: '签收', timeField: 'delivery_time' as const },
+  { key: 'delivery', label: '签收', timeField: 'logistics_sign_time' as const },
   { key: 'unload', label: '卸货', timeField: 'unload_time' as const },
-  { key: 'shelve', label: '上架', timeField: 'shelve_time' as const },
+  { key: 'shelve', label: '上架', timeField: 'shelf_time' as const },
 ];
 
 const SLA_ITEMS = [
@@ -244,8 +244,8 @@ export default function OrderDetailPage() {
 
   const NODE_STATUS_MAP: Record<string, TransferStatus> = {
     pickup_time: 'IN_TRANSIT',
-    delivery_time: 'RECEIVED',
-    shelve_time: 'SHELVED',
+    logistics_sign_time: 'RECEIVED',
+    shelf_time: 'SHELVED',
   };
 
   const openNodeEdit = (field: string, currentValue: string) => {
@@ -332,7 +332,7 @@ export default function OrderDetailPage() {
         { label: '出库单号', value: order.outbound_order_no || '--' },
         { label: 'ERP订单号', value: order.erp_order_no || '--' },
         { label: '创建时间', value: order.create_time ? new Date(order.create_time).toLocaleString('zh-CN') : '--' },
-        { label: '出库时间', value: order.depart_time ? new Date(order.depart_time).toLocaleString('zh-CN') : '--' },
+        { label: '出库时间', value: order.departure_time ? new Date(order.departure_time).toLocaleString('zh-CN') : '--' },
       ],
     },
     {

@@ -13,7 +13,7 @@ const TIME_THRESHOLD_DAYS = 3;
 
 const QUANTITY_FIELDS = ['total_qty', 'total_carton_count', 'total_sku_count'];
 const AMOUNT_FIELDS = ['estimated_unit_price', 'estimated_freight', 'total_freight_amount'];
-const TIME_FIELDS = ['pickup_time', 'depart_time', 'arrive_port_time', 'clearance_time', 'last_mile_pickup_time', 'delivery_time', 'unload_time', 'shelve_time'];
+const TIME_FIELDS = ['pickup_time', 'departure_time', 'arrival_port_time', 'customs_clearance_time', 'last_mile_pickup_time', 'logistics_sign_time', 'unload_time', 'shelf_time'];
 
 function checkLogisticsAbnormal(order: Record<string, any>, today: Date): Record<string, any> {
   const updates: Record<string, any> = {};
@@ -21,15 +21,15 @@ function checkLogisticsAbnormal(order: Record<string, any>, today: Date): Record
 
   if (order.expected_arrival_date) {
     const expected = new Date(order.expected_arrival_date);
-    if (today > expected && !order.delivery_time) {
+    if (today > expected && !order.logistics_sign_time) {
       updates.is_logistics_abnormal = true;
       updates.logistics_abnormal_type = 'TIMEOUT_NOT_RECEIVED';
       return updates;
     }
   }
 
-  if (order.arrive_port_time && !order.clearance_time) {
-    const arrivePort = new Date(order.arrive_port_time);
+  if (order.arrival_port_time && !order.customs_clearance_time) {
+    const arrivePort = new Date(order.arrival_port_time);
     const diffDays = (today.getTime() - arrivePort.getTime()) / 86400000;
     if (diffDays > 7) {
       updates.is_logistics_abnormal = true;
@@ -38,8 +38,8 @@ function checkLogisticsAbnormal(order: Record<string, any>, today: Date): Record
     }
   }
 
-  if (order.clearance_time && !order.last_mile_pickup_time) {
-    const clearance = new Date(order.clearance_time);
+  if (order.customs_clearance_time && !order.last_mile_pickup_time) {
+    const clearance = new Date(order.customs_clearance_time);
     const diffDays = (today.getTime() - clearance.getTime()) / 86400000;
     if (diffDays > 5) {
       updates.is_logistics_abnormal = true;
@@ -83,7 +83,6 @@ const editOrderSchema = z.object({
   customs_factory: z.string().optional(),
   is_inspected: z.boolean().optional(),
   timeline_requirement_days: z.number().optional(),
-  order_remark: z.string().optional(),
   last_mile_type: z.string().optional(),
   last_mile_channel: z.string().optional(),
   delay_explanation: z.string().optional(),
@@ -91,13 +90,13 @@ const editOrderSchema = z.object({
   logistics_abnormal_remark: z.string().optional(),
   shelf_abnormal_remark: z.string().optional(),
   pickup_time: z.string().nullable().optional(),
-  depart_time: z.string().nullable().optional(),
-  arrive_port_time: z.string().nullable().optional(),
-  clearance_time: z.string().nullable().optional(),
+  departure_time: z.string().nullable().optional(),
+  arrival_port_time: z.string().nullable().optional(),
+  customs_clearance_time: z.string().nullable().optional(),
   last_mile_pickup_time: z.string().nullable().optional(),
-  delivery_time: z.string().nullable().optional(),
+  logistics_sign_time: z.string().nullable().optional(),
   unload_time: z.string().nullable().optional(),
-  shelve_time: z.string().nullable().optional(),
+  shelf_time: z.string().nullable().optional(),
   reason: z.string().optional(),
 });
 
@@ -171,8 +170,8 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const allowedSortFields = [
     'create_time',
     'pickup_time',
-    'delivery_time',
-    'shelve_time',
+    'logistics_sign_time',
+    'shelf_time',
     'total_qty',
     'total_carton_count',
   ];
@@ -197,8 +196,8 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       'is_reconciled',
       'create_time',
       'pickup_time',
-      'delivery_time',
-      'shelve_time',
+      'logistics_sign_time',
+      'shelf_time',
       'expected_arrival_date',
     ])
     .offset((page - 1) * pageSize)
@@ -212,7 +211,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       row.status === 'IN_TRANSIT' &&
       !!row.expected_arrival_date &&
       today > new Date(row.expected_arrival_date) &&
-      !row.delivery_time,
+      !row.logistics_sign_time,
   }));
 
   return c.json({
@@ -411,10 +410,10 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
     update_time: now,
   };
 
-  if (newStatus === 'OUTBOUNDED' && !order.depart_time) updates.depart_time = now;
+  if (newStatus === 'OUTBOUNDED' && !order.departure_time) updates.departure_time = now;
   if (newStatus === 'IN_TRANSIT' && !order.pickup_time) updates.pickup_time = now;
-  if (newStatus === 'RECEIVED' && !order.delivery_time) updates.delivery_time = now;
-  if (newStatus === 'SHELVED' && !order.shelve_time) updates.shelve_time = now;
+  if (newStatus === 'RECEIVED' && !order.logistics_sign_time) updates.logistics_sign_time = now;
+  if (newStatus === 'SHELVED' && !order.shelf_time) updates.shelf_time = now;
 
   const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
   Object.assign(updates, abnormalUpdates);
@@ -432,19 +431,19 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
     });
   }
 
-  if (updates.delivery_time || updates.shelve_time || updates.unload_time) {
+  if (updates.logistics_sign_time || updates.shelf_time || updates.unload_time) {
     const cartons = await db('transfer_cartons').where({ transfer_no: transferNo });
     for (const ctn of cartons) {
       const ctnUpdates: Record<string, any> = {};
       const depart = ctn.departure_time;
-      const sign = updates.delivery_time || ctn.logistics_sign_time;
+      const sign = updates.logistics_sign_time || ctn.logistics_sign_time;
       const unload = updates.unload_time || ctn.unload_time;
-      const shelf = updates.shelve_time || ctn.shelf_time;
+      const shelf = updates.shelf_time || ctn.shelf_time;
 
       for (const [orderField, cartonField] of Object.entries({
-        depart_time: 'departure_time', arrive_port_time: 'arrival_port_time',
-        clearance_time: 'customs_clearance_time', last_mile_pickup_time: 'last_mile_pickup_time',
-        delivery_time: 'logistics_sign_time', unload_time: 'unload_time', shelve_time: 'shelf_time',
+        departure_time: 'departure_time', arrival_port_time: 'arrival_port_time',
+        customs_clearance_time: 'customs_clearance_time', last_mile_pickup_time: 'last_mile_pickup_time',
+        logistics_sign_time: 'logistics_sign_time', unload_time: 'unload_time', shelf_time: 'shelf_time',
       })) {
         if ((updates as any)[orderField]) ctnUpdates[cartonField] = (updates as any)[orderField];
       }
@@ -520,10 +519,10 @@ orders.put('/batch-status', zValidator('json', z.object({
     }
 
     const updates: Record<string, any> = { status: newStatus, update_time: now };
-    if (newStatus === 'OUTBOUNDED' && !order.depart_time) updates.depart_time = now;
+    if (newStatus === 'OUTBOUNDED' && !order.departure_time) updates.departure_time = now;
     if (newStatus === 'IN_TRANSIT' && !order.pickup_time) updates.pickup_time = now;
-    if (newStatus === 'RECEIVED' && !order.delivery_time) updates.delivery_time = now;
-    if (newStatus === 'SHELVED' && !order.shelve_time) updates.shelve_time = now;
+    if (newStatus === 'RECEIVED' && !order.logistics_sign_time) updates.logistics_sign_time = now;
+    if (newStatus === 'SHELVED' && !order.shelf_time) updates.shelf_time = now;
 
     const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
     Object.assign(updates, abnormalUpdates);
@@ -571,18 +570,18 @@ orders.put('/batch-status', zValidator('json', z.object({
         });
       }
 
-      if (updates.delivery_time || updates.shelve_time || updates.unload_time) {
+      if (updates.logistics_sign_time || updates.shelf_time || updates.unload_time) {
         const cartons = await db('transfer_cartons').where({ transfer_no: transferNo });
         for (const ctn of cartons) {
           const ctnUpdates: Record<string, any> = {};
           const depart = ctn.departure_time;
-          const sign = updates.delivery_time || ctn.logistics_sign_time;
+          const sign = updates.logistics_sign_time || ctn.logistics_sign_time;
           const unload = updates.unload_time || ctn.unload_time;
-          const shelf = updates.shelve_time || ctn.shelf_time;
+          const shelf = updates.shelf_time || ctn.shelf_time;
           for (const [of, cf] of Object.entries({
-            depart_time: 'departure_time', arrive_port_time: 'arrival_port_time',
-            clearance_time: 'customs_clearance_time', last_mile_pickup_time: 'last_mile_pickup_time',
-            delivery_time: 'logistics_sign_time', unload_time: 'unload_time', shelve_time: 'shelf_time',
+            departure_time: 'departure_time', arrival_port_time: 'arrival_port_time',
+            customs_clearance_time: 'customs_clearance_time', last_mile_pickup_time: 'last_mile_pickup_time',
+            logistics_sign_time: 'logistics_sign_time', unload_time: 'unload_time', shelf_time: 'shelf_time',
           })) { if ((updates as any)[of]) ctnUpdates[cf] = (updates as any)[of]; }
           if (depart && sign) {
             ctnUpdates.checkout_to_sign_days = Math.round((new Date(sign).getTime() - new Date(depart).getTime()) / 86400000 * 100) / 100;

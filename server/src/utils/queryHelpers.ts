@@ -2,10 +2,10 @@ import { Knex } from 'knex';
 
 const TIME_RANGE_FIELDS = [
   { param: 'create_time_start', paramEnd: 'create_time_end', column: 'create_time' },
-  { param: 'depart_time_start', paramEnd: 'depart_time_end', column: 'depart_time' },
+  { param: 'departure_time_start', paramEnd: 'departure_time_end', column: 'departure_time' },
   { param: 'pickup_time_start', paramEnd: 'pickup_time_end', column: 'pickup_time' },
-  { param: 'delivery_time_start', paramEnd: 'delivery_time_end', column: 'delivery_time' },
-  { param: 'shelve_time_start', paramEnd: 'shelve_time_end', column: 'shelve_time' },
+  { param: 'logistics_sign_time_start', paramEnd: 'logistics_sign_time_end', column: 'logistics_sign_time' },
+  { param: 'shelf_time_start', paramEnd: 'shelf_time_end', column: 'shelf_time' },
 ] as const;
 
 export function applyTimeRangeFilters(query: Knex.QueryBuilder, c: any, tablePrefix?: string): Knex.QueryBuilder {

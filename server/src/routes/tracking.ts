@@ -119,11 +119,11 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       'total_qty',
       'total_carton_count',
       'pickup_time',
-      'depart_time',
-      'arrive_port_time',
-      'clearance_time',
+      'departure_time',
+      'arrival_port_time',
+      'customs_clearance_time',
       'last_mile_pickup_time',
-      'delivery_time',
+      'logistics_sign_time',
       'is_customs_declared',
       'is_inspected',
       'is_logistics_abnormal',
@@ -197,7 +197,7 @@ tracking.get('/dashboard', async (c) => {
       ]),
     db('transfer_orders').where('status', 'IN_TRANSIT').select('to_warehouse').count('* as count').groupBy('to_warehouse'),
     db('transfer_orders').where('status', 'IN_TRANSIT').select('transport_type').count('* as count').groupBy('transport_type'),
-    db('transfer_orders').where('status', 'RECEIVED').where('delivery_time', '>=', sevenDaysAgo.toISOString()).select('delivery_time'),
+    db('transfer_orders').where('status', 'RECEIVED').where('logistics_sign_time', '>=', sevenDaysAgo.toISOString()).select('logistics_sign_time'),
   ]);
 
   let timeoutCount = 0;
@@ -226,8 +226,8 @@ tracking.get('/dashboard', async (c) => {
 
   const dailyTrend: Record<string, number> = {};
   for (const r of recentReceived) {
-    if (r.delivery_time) {
-      const day = new Date(r.delivery_time).toISOString().slice(0, 10);
+    if (r.logistics_sign_time) {
+      const day = new Date(r.logistics_sign_time).toISOString().slice(0, 10);
       dailyTrend[day] = (dailyTrend[day] || 0) + 1;
     }
   }
@@ -301,13 +301,13 @@ tracking.get('/export', async (c) => {
     'transfer_orders.total_qty',
     'transfer_orders.total_carton_count',
     'transfer_orders.pickup_time',
-    'transfer_orders.depart_time',
-    'transfer_orders.arrive_port_time',
-    'transfer_orders.clearance_time',
+    'transfer_orders.departure_time',
+    'transfer_orders.arrival_port_time',
+    'transfer_orders.customs_clearance_time',
     'transfer_orders.last_mile_pickup_time',
-    'transfer_orders.delivery_time',
+    'transfer_orders.logistics_sign_time',
     'transfer_orders.unload_time',
-    'transfer_orders.shelve_time',
+    'transfer_orders.shelf_time',
     'transfer_orders.is_customs_declared',
     'transfer_orders.is_inspected',
     'transfer_orders.timeline_requirement_days',
@@ -475,14 +475,14 @@ tracking.get('/export', async (c) => {
         order.transport_type,
         order.timeline_requirement_days,
         order.logistics_tracking_no,
-        ctn.logistics_sign_time || order.delivery_time,
-        ctn.departure_time || order.depart_time,
-        ctn.arrival_port_time || order.arrive_port_time,
-        ctn.customs_clearance_time || order.clearance_time,
+        ctn.logistics_sign_time || order.logistics_sign_time,
+        ctn.departure_time || order.departure_time,
+        ctn.arrival_port_time || order.arrival_port_time,
+        ctn.customs_clearance_time || order.customs_clearance_time,
         ctn.last_mile_pickup_time || order.last_mile_pickup_time,
-        ctn.logistics_sign_time || order.delivery_time,
+        ctn.logistics_sign_time || order.logistics_sign_time,
         ctn.unload_time || order.unload_time,
-        ctn.shelf_time || order.shelve_time,
+        ctn.shelf_time || order.shelf_time,
         checkoutToSignDays ?? ctn.checkout_to_sign_days ?? '',
         signToShelfDays ?? ctn.sign_to_shelf_days ?? '',
         unloadToShelfDays ?? ctn.unload_to_shelf_days ?? '',

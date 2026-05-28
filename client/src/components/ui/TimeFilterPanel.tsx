@@ -4,20 +4,20 @@ import { Calendar, ChevronDown, X } from 'lucide-react';
 interface TimeFilterPanelProps {
   filters: {
     createTimeRange: { start: string; end: string };
-    departTimeRange: { start: string; end: string };
+    departureTimeRange: { start: string; end: string };
     pickupTimeRange: { start: string; end: string };
-    deliveryTimeRange: { start: string; end: string };
-    shelveTimeRange: { start: string; end: string };
+    logisticsSignTimeRange: { start: string; end: string };
+    shelfTimeRange: { start: string; end: string };
   };
   onChange: (filters: TimeFilterPanelProps['filters']) => void;
 }
 
 const FIELDS = [
   { key: 'createTimeRange', label: '创建时间', startKey: 'start', endKey: 'end' },
-  { key: 'departTimeRange', label: '出库时间', startKey: 'start', endKey: 'end' },
+  { key: 'departureTimeRange', label: '出库时间', startKey: 'start', endKey: 'end' },
   { key: 'pickupTimeRange', label: '收件时间', startKey: 'start', endKey: 'end' },
-  { key: 'deliveryTimeRange', label: '签收时间', startKey: 'start', endKey: 'end' },
-  { key: 'shelveTimeRange', label: '上架时间', startKey: 'start', endKey: 'end' },
+  { key: 'logisticsSignTimeRange', label: '签收时间', startKey: 'start', endKey: 'end' },
+  { key: 'shelfTimeRange', label: '上架时间', startKey: 'start', endKey: 'end' },
 ] as const;
 
 export default function TimeFilterPanel({ filters, onChange }: TimeFilterPanelProps) {
@@ -28,10 +28,10 @@ export default function TimeFilterPanel({ filters, onChange }: TimeFilterPanelPr
   const handleClear = () => {
     onChange({
       createTimeRange: { start: '', end: '' },
-      departTimeRange: { start: '', end: '' },
+      departureTimeRange: { start: '', end: '' },
       pickupTimeRange: { start: '', end: '' },
-      deliveryTimeRange: { start: '', end: '' },
-      shelveTimeRange: { start: '', end: '' },
+      logisticsSignTimeRange: { start: '', end: '' },
+      shelfTimeRange: { start: '', end: '' },
     });
   };
 
