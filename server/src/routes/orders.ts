@@ -117,6 +117,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const isShelfAbnormal = c.req.query('is_shelf_abnormal');
   const abnormal = c.req.query('abnormal');
   const logisticsCarrier = c.req.query('logistics_carrier');
+  const team = c.req.query('team');
   const sortBy = c.req.query('sortBy') || 'create_time';
   const sortOrder = c.req.query('sortOrder') || 'desc';
 
@@ -154,6 +155,11 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       query = query.where('is_logistics_abnormal', 1);
     } else if (abnormal === 'shelf') {
       query = query.where('is_shelf_abnormal', 1);
+    } else if (abnormal === 'timeout') {
+      query = query.where('status', 'IN_TRANSIT')
+        .whereNotNull('expected_arrival_date')
+        .where('expected_arrival_date', '<', new Date().toISOString().slice(0, 10))
+        .whereNull('logistics_sign_time');
     } else if (abnormal === 'any' || abnormal === 'true') {
       query = query.where(function() {
         this.where('is_logistics_abnormal', 1).orWhere('is_shelf_abnormal', 1);
@@ -161,6 +167,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
     }
   }
   if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
+  if (team) query = query.where('team', team);
 
   query = applyTimeRangeFilters(query, c);
 
@@ -236,6 +243,7 @@ orders.get('/export', async (c) => {
   const isReconciled = c.req.query('is_reconciled');
   const abnormal = c.req.query('abnormal');
   const logisticsCarrier = c.req.query('logistics_carrier');
+  const team = c.req.query('team');
 
   let query = db('transfer_orders');
 
@@ -274,6 +282,11 @@ orders.get('/export', async (c) => {
       query = query.where('is_logistics_abnormal', 1);
     } else if (abnormal === 'shelf') {
       query = query.where('is_shelf_abnormal', 1);
+    } else if (abnormal === 'timeout') {
+      query = query.where('status', 'IN_TRANSIT')
+        .whereNotNull('expected_arrival_date')
+        .where('expected_arrival_date', '<', new Date().toISOString().slice(0, 10))
+        .whereNull('logistics_sign_time');
     } else if (abnormal === 'any' || abnormal === 'true') {
       query = query.where(function() {
         this.where('is_logistics_abnormal', 1).orWhere('is_shelf_abnormal', 1);
@@ -281,6 +294,7 @@ orders.get('/export', async (c) => {
     }
   }
   if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
+  if (team) query = query.where('team', team);
   query = applyTimeRangeFilters(query, c);
 
   const transferNosParam = c.req.query('transfer_nos');

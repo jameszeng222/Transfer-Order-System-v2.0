@@ -59,12 +59,6 @@ const SOURCE_OPTIONS = [
   { label: '其他', value: 'OTHER' },
 ];
 
-const TEAM_OPTIONS = [
-  { label: '北美组', value: 'NA' },
-  { label: '欧洲组', value: 'EU' },
-  { label: '亚太组', value: 'APAC' },
-];
-
 const ABNORMAL_OPTIONS = [
   { label: '仅物流异常', value: 'logistics' },
   { label: '仅上架异常', value: 'shelf' },
@@ -118,6 +112,7 @@ export default function OrderListPage() {
   const [loading, setLoading] = useState(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [carriers, setCarriers] = useState<{ id: number; carrier_name: string }[]>([]);
+  const [teams, setTeams] = useState<{ id: number; team_name: string }[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
   const [timeFilters, setTimeFilters] = useState({ ...DEFAULT_TIME_FILTERS });
@@ -133,6 +128,12 @@ export default function OrderListPage() {
   useEffect(() => {
     api.get<{ success: boolean; data: { id: number; carrier_name: string }[] }>('/carriers?pageSize=100')
       .then((res) => { if (res.success && Array.isArray(res.data)) setCarriers(res.data); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.get<{ success: boolean; data: { id: number; team_name: string }[] }>('/teams?pageSize=100')
+      .then((res) => { if (res.success && Array.isArray(res.data)) setTeams(res.data); })
       .catch(() => {});
   }, []);
 
@@ -410,7 +411,7 @@ export default function OrderListPage() {
             value={filters.from_warehouse}
             onChange={handleFilterChange}
             placeholder="全部发货仓"
-            options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_code }))}
+            options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_name }))}
             className="w-[140px]"
           />
           <FormField
@@ -419,7 +420,7 @@ export default function OrderListPage() {
             value={filters.to_warehouse}
             onChange={handleFilterChange}
             placeholder="全部目的仓"
-            options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_code }))}
+            options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_name }))}
             className="w-[140px]"
           />
           <FormField
@@ -437,7 +438,7 @@ export default function OrderListPage() {
             value={filters.team}
             onChange={handleFilterChange}
             placeholder="全部团队"
-            options={TEAM_OPTIONS}
+            options={teams.map(t => ({ label: t.team_name, value: t.team_name }))}
             className="w-[130px]"
           />
           <FormField

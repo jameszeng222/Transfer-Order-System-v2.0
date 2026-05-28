@@ -353,7 +353,7 @@ export default function TrackingPage() {
             value={filters.from_warehouse}
             onChange={handleFilterChange}
             placeholder="全部发货仓"
-            options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_code }))}
+            options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_name }))}
             className="w-[140px]"
           />
           <FormField
@@ -362,7 +362,7 @@ export default function TrackingPage() {
             value={filters.to_warehouse}
             onChange={handleFilterChange}
             placeholder="全部目的仓"
-            options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_code }))}
+            options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_name }))}
             className="w-[140px]"
           />
           <FormField

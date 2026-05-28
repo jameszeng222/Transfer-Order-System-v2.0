@@ -76,6 +76,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const isTimeout = c.req.query('is_timeout');
   const logisticsCarrier = c.req.query('logistics_carrier');
   const team = c.req.query('team');
+  const abnormal = c.req.query('abnormal');
 
   let query = db('transfer_orders').where('status', 'IN_TRANSIT');
 
@@ -93,6 +94,15 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   }
   if (team) {
     query = query.where('team', team);
+  }
+  if (abnormal) {
+    if (abnormal === 'logistics') {
+      query = query.where('is_logistics_abnormal', 1);
+    } else if (abnormal === 'timeout') {
+      query = query.whereNotNull('expected_arrival_date')
+        .where('expected_arrival_date', '<', new Date().toISOString().slice(0, 10))
+        .whereNull('logistics_sign_time');
+    }
   }
 
   query = applyTimeRangeFilters(query, c);
@@ -269,6 +279,7 @@ tracking.get('/export', async (c) => {
   const isTimeout = c.req.query('is_timeout');
   const logisticsCarrier = c.req.query('logistics_carrier');
   const team = c.req.query('team');
+  const abnormal = c.req.query('abnormal');
 
   let query = db('transfer_orders').whereIn('status', ['IN_TRANSIT', 'RECEIVED']);
 
@@ -277,6 +288,15 @@ tracking.get('/export', async (c) => {
   if (transportType) query = query.where('transport_type', transportType);
   if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
   if (team) query = query.where('team', team);
+  if (abnormal) {
+    if (abnormal === 'logistics') {
+      query = query.where('is_logistics_abnormal', 1);
+    } else if (abnormal === 'timeout') {
+      query = query.whereNotNull('expected_arrival_date')
+        .where('expected_arrival_date', '<', new Date().toISOString().slice(0, 10))
+        .whereNull('logistics_sign_time');
+    }
+  }
 
   const transferNosParam = c.req.query('transfer_nos');
   if (transferNosParam) {

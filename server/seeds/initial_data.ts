@@ -80,15 +80,17 @@ export async function seed(knex: Knex): Promise<void> {
 
   await knex('role_permissions').insert(rolePermissionData);
 
-  const [teamAId, teamBId, teamCId] = await knex('teams').insert([
-    { team_code: 'TEAM_A', team_name: 'A组', leader: '张三' },
-    { team_code: 'TEAM_B', team_name: 'B组', leader: '李四' },
-    { team_code: 'TEAM_C', team_name: 'C组', leader: '王五' },
+  const [teamAId, teamBId, teamCId, teamDId] = await knex('teams').insert([
+    { team_code: 'TEAM_HN1', team_name: '华南一组', leader: '张三' },
+    { team_code: 'TEAM_HN2', team_name: '华南二组', leader: '李四' },
+    { team_code: 'TEAM_HD1', team_name: '华东一组', leader: '王五' },
+    { team_code: 'TEAM_HD2', team_name: '华东二组', leader: '赵六' },
   ]).returning('id').then((rows) => rows.map((r) => r.id));
 
   void teamAId;
   void teamBId;
   void teamCId;
+  void teamDId;
 
   const passwordHash = await bcrypt.hash('admin123', 10);
   await knex('users').insert({
@@ -104,12 +106,15 @@ export async function seed(knex: Knex): Promise<void> {
   await knex('warehouses').insert([
     { warehouse_code: 'WH-SZ-01', warehouse_name: '深圳仓', region: '国内', country: '中国', timezone: 'Asia/Shanghai', warehouse_type: 'DOMESTIC', warehouse_category: 'SELF' },
     { warehouse_code: 'WH-GZ-01', warehouse_name: '广州仓', region: '国内', country: '中国', timezone: 'Asia/Shanghai', warehouse_type: 'DOMESTIC', warehouse_category: 'SELF' },
+    { warehouse_code: 'WH-SH-01', warehouse_name: '上海仓', region: '国内', country: '中国', timezone: 'Asia/Shanghai', warehouse_type: 'DOMESTIC', warehouse_category: 'SELF' },
     { warehouse_code: 'WH-YW-01', warehouse_name: '义乌仓', region: '国内', country: '中国', timezone: 'Asia/Shanghai', warehouse_type: 'DOMESTIC', warehouse_category: 'SELF' },
     { warehouse_code: 'WH-US-LA', warehouse_name: '洛杉矶仓', region: '北美', country: '美国', timezone: 'America/Los_Angeles', warehouse_type: 'OVERSEAS', warehouse_category: 'WANYITONG', api_enabled: true, api_provider: 'WANYITONG' },
     { warehouse_code: 'WH-US-NJ', warehouse_name: '新泽西仓', region: '北美', country: '美国', timezone: 'America/New_York', warehouse_type: 'OVERSEAS', warehouse_category: 'WANYITONG', api_enabled: true, api_provider: 'WANYITONG' },
     { warehouse_code: 'WH-UK-LON', warehouse_name: '伦敦仓', region: '欧洲', country: '英国', timezone: 'Europe/London', warehouse_type: 'OVERSEAS', warehouse_category: 'WANYITONG' },
     { warehouse_code: 'WH-DE-HAM', warehouse_name: '汉堡仓', region: '欧洲', country: '德国', timezone: 'Europe/Berlin', warehouse_type: 'OVERSEAS', warehouse_category: 'SICHUANG' },
+    { warehouse_code: 'WH-DE-FRA', warehouse_name: '法兰克福仓', region: '欧洲', country: '德国', timezone: 'Europe/Berlin', warehouse_type: 'OVERSEAS', warehouse_category: 'SICHUANG' },
     { warehouse_code: 'WH-JP-TKY', warehouse_name: '东京仓', region: '亚太', country: '日本', timezone: 'Asia/Tokyo', warehouse_type: 'OVERSEAS', warehouse_category: 'ONNAT' },
+    { warehouse_code: 'WH-AU-SYD', warehouse_name: '悉尼仓', region: '亚太', country: '澳大利亚', timezone: 'Australia/Sydney', warehouse_type: 'OVERSEAS', warehouse_category: 'WANYITONG' },
     { warehouse_code: 'WH-FBA-US', warehouse_name: 'FBA美国', region: '北美', country: '美国', timezone: 'America/Los_Angeles', warehouse_type: 'FBA', warehouse_category: 'AMAZON_FBA' },
   ]);
 
