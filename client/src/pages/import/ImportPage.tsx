@@ -58,14 +58,14 @@ export default function ImportPage() {
     setResult(null);
     try {
       const token = localStorage.getItem('token');
-      const formData = new FormData();
-      formData.append('file', f);
+      const arrayBuffer = await f.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000);
       const res = await fetch(`${API_BASE}${config.endpoint}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ filename: f.name, data: base64 }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);

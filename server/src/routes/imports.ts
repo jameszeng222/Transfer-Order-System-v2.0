@@ -19,6 +19,24 @@ async function parseUploadFile(c: any): Promise<{ buffer: ArrayBuffer; operator:
     return c.json({ success: false, error: 'Forbidden: missing import.execute permission' }, 403);
   }
 
+  const contentType = c.req.header('Content-Type') || '';
+
+  if (contentType.includes('application/json')) {
+    const body = await c.req.json();
+    const { filename, data } = body;
+    if (!data) {
+      return c.json({ success: false, error: '请上传文件，字段名为 data' }, 400);
+    }
+    const fname = filename || 'upload.xlsx';
+    if (!fname.endsWith('.xlsx') && !fname.endsWith('.xls')) {
+      return c.json({ success: false, error: '仅支持 Excel 文件（.xlsx / .xls）' }, 400);
+    }
+    const buffer = Buffer.from(data, 'base64').buffer as ArrayBuffer;
+    const user = c.get('user');
+    const operator = user?.username || 'unknown';
+    return { buffer, operator };
+  }
+
   const body = await c.req.parseBody();
   const file = body['file'];
 
@@ -42,35 +60,55 @@ async function parseUploadFile(c: any): Promise<{ buffer: ArrayBuffer; operator:
 }
 
 imports.post('/upload', async (c) => {
-  const parsed = await parseUploadFile(c);
-  if (parsed instanceof Response) return parsed;
-  const { buffer, operator } = parsed;
-  const result = await importExcel(buffer, operator);
-  return c.json({ success: true, data: result });
+  try {
+    const parsed = await parseUploadFile(c);
+    if (parsed instanceof Response) return parsed;
+    const { buffer, operator } = parsed;
+    const result = await importExcel(buffer, operator);
+    return c.json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('[import/upload] Error:', err?.message || err);
+    return c.json({ success: false, error: `导入失败: ${err?.message || '未知错误'}` }, 500);
+  }
 });
 
 imports.post('/inbound', async (c) => {
-  const parsed = await parseUploadFile(c);
-  if (parsed instanceof Response) return parsed;
-  const { buffer, operator } = parsed;
-  const result = await importInboundReturn(buffer, operator);
-  return c.json({ success: true, data: result });
+  try {
+    const parsed = await parseUploadFile(c);
+    if (parsed instanceof Response) return parsed;
+    const { buffer, operator } = parsed;
+    const result = await importInboundReturn(buffer, operator);
+    return c.json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('[import/inbound] Error:', err?.message || err);
+    return c.json({ success: false, error: `导入失败: ${err?.message || '未知错误'}` }, 500);
+  }
 });
 
 imports.post('/logistics', async (c) => {
-  const parsed = await parseUploadFile(c);
-  if (parsed instanceof Response) return parsed;
-  const { buffer, operator } = parsed;
-  const result = await importLogisticsMerged(buffer, operator);
-  return c.json({ success: true, data: result });
+  try {
+    const parsed = await parseUploadFile(c);
+    if (parsed instanceof Response) return parsed;
+    const { buffer, operator } = parsed;
+    const result = await importLogisticsMerged(buffer, operator);
+    return c.json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('[import/logistics] Error:', err?.message || err);
+    return c.json({ success: false, error: `导入失败: ${err?.message || '未知错误'}` }, 500);
+  }
 });
 
 imports.post('/freight', async (c) => {
-  const parsed = await parseUploadFile(c);
-  if (parsed instanceof Response) return parsed;
-  const { buffer, operator } = parsed;
-  const result = await processFreightImport(buffer, operator);
-  return c.json({ success: true, data: result });
+  try {
+    const parsed = await parseUploadFile(c);
+    if (parsed instanceof Response) return parsed;
+    const { buffer, operator } = parsed;
+    const result = await processFreightImport(buffer, operator);
+    return c.json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('[import/freight] Error:', err?.message || err);
+    return c.json({ success: false, error: `导入失败: ${err?.message || '未知错误'}` }, 500);
+  }
 });
 
 imports.get('/templates/:type', async (c) => {
