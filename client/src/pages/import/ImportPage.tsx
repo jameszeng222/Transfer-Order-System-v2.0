@@ -60,11 +60,19 @@ export default function ImportPage() {
       const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('file', f);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
       const res = await fetch(`${API_BASE}${config.endpoint}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`服务器返回 ${res.status}: ${text.slice(0, 200) || res.statusText}`);
+      }
       const data = await res.json();
       if (data.success) {
         setResult(data.data);
@@ -73,7 +81,14 @@ export default function ImportPage() {
         setResult({ total: 0, success: 0, failed: 1, errors: [{ row: 0, message: data.error || '导入失败' }], createdOrders: 0, updatedOrders: 0 });
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '网络错误';
+      let msg = '网络错误';
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        msg = '请求超时（120秒），请检查网络或缩小导入数据量后重试';
+      } else if (err instanceof TypeError && err.message === 'Failed to fetch') {
+        msg = '无法连接服务器，请检查网络连接，或稍后重试（服务器可能正在启动中）';
+      } else if (err instanceof Error) {
+        msg = err.message;
+      }
       setResult({ total: 0, success: 0, failed: 1, errors: [{ row: 0, message: msg }], createdOrders: 0, updatedOrders: 0 });
     } finally {
       setLoadingKey(null);
