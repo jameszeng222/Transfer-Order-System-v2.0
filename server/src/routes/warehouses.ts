@@ -80,17 +80,22 @@ warehouses.get('/:id', async (c) => {
 });
 
 warehouses.post('/', zValidator('json', createWarehouseSchema), async (c) => {
-  const user = c.get('user');
   if (!await requirePermission(c, 'settings.manage')) {
     return c.json({ success: false, error: 'Permission denied' }, 403);
   }
   const body = c.req.valid('json');
-  const [inserted] = await db('warehouses').insert(body).returning('*');
-  return c.json({ success: true, data: inserted }, 201);
+  try {
+    const [inserted] = await db('warehouses').insert(body).returning('*');
+    return c.json({ success: true, data: inserted }, 201);
+  } catch (err: any) {
+    if (err?.message?.includes('UNIQUE')) {
+      return c.json({ success: false, error: '仓库编码已存在' }, 400);
+    }
+    return c.json({ success: false, error: err?.message || '创建失败' }, 400);
+  }
 });
 
 warehouses.put('/:id', zValidator('json', updateWarehouseSchema), async (c) => {
-  const user = c.get('user');
   if (!await requirePermission(c, 'settings.manage')) {
     return c.json({ success: false, error: 'Permission denied' }, 403);
   }
@@ -102,13 +107,20 @@ warehouses.put('/:id', zValidator('json', updateWarehouseSchema), async (c) => {
     return c.json({ success: false, error: 'Warehouse not found' }, 404);
   }
 
-  await db('warehouses').where({ id }).update({
-    ...body,
-    update_time: new Date().toISOString(),
-  });
+  try {
+    await db('warehouses').where({ id }).update({
+      ...body,
+      update_time: new Date().toISOString(),
+    });
 
-  const updated = await db('warehouses').where({ id }).first();
-  return c.json({ success: true, data: updated });
+    const updated = await db('warehouses').where({ id }).first();
+    return c.json({ success: true, data: updated });
+  } catch (err: any) {
+    if (err?.message?.includes('UNIQUE')) {
+      return c.json({ success: false, error: '仓库编码已存在' }, 400);
+    }
+    return c.json({ success: false, error: err?.message || '更新失败' }, 400);
+  }
 });
 
 warehouses.delete('/:id', async (c) => {

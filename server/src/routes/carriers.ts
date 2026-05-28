@@ -75,17 +75,22 @@ carriers.get('/:id', async (c) => {
 });
 
 carriers.post('/', zValidator('json', createCarrierSchema), async (c) => {
-  const user = c.get('user');
   if (!await requirePermission(c, 'settings.manage')) {
     return c.json({ success: false, error: 'Permission denied' }, 403);
   }
   const body = c.req.valid('json');
-  const [inserted] = await db('carriers').insert(body).returning('*');
-  return c.json({ success: true, data: inserted }, 201);
+  try {
+    const [inserted] = await db('carriers').insert(body).returning('*');
+    return c.json({ success: true, data: inserted }, 201);
+  } catch (err: any) {
+    if (err?.message?.includes('UNIQUE')) {
+      return c.json({ success: false, error: '物流商编码已存在' }, 400);
+    }
+    return c.json({ success: false, error: err?.message || '创建失败' }, 400);
+  }
 });
 
 carriers.put('/:id', zValidator('json', updateCarrierSchema), async (c) => {
-  const user = c.get('user');
   if (!await requirePermission(c, 'settings.manage')) {
     return c.json({ success: false, error: 'Permission denied' }, 403);
   }
@@ -97,13 +102,20 @@ carriers.put('/:id', zValidator('json', updateCarrierSchema), async (c) => {
     return c.json({ success: false, error: 'Carrier not found' }, 404);
   }
 
-  await db('carriers').where({ id }).update({
-    ...body,
-    update_time: new Date().toISOString(),
-  });
+  try {
+    await db('carriers').where({ id }).update({
+      ...body,
+      update_time: new Date().toISOString(),
+    });
 
-  const updated = await db('carriers').where({ id }).first();
-  return c.json({ success: true, data: updated });
+    const updated = await db('carriers').where({ id }).first();
+    return c.json({ success: true, data: updated });
+  } catch (err: any) {
+    if (err?.message?.includes('UNIQUE')) {
+      return c.json({ success: false, error: '物流商编码已存在' }, 400);
+    }
+    return c.json({ success: false, error: err?.message || '更新失败' }, 400);
+  }
 });
 
 carriers.delete('/:id', async (c) => {
