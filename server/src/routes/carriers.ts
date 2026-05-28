@@ -4,6 +4,11 @@ import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
 import { requirePermission } from '../middleware/auth.js';
 
+const boolish = z.union([z.boolean(), z.number(), z.string()]).optional().transform(v => {
+  if (v === true || v === 1 || v === '1' || v === 'true') return true;
+  return false;
+});
+
 const carriers = new Hono();
 
 const createCarrierSchema = z.object({
@@ -16,7 +21,7 @@ const createCarrierSchema = z.object({
   settlement_cycle: z.string().optional(),
   contact_name: z.string().optional(),
   contact_phone: z.string().optional(),
-  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
+  is_active: boolish,
   remark: z.string().optional(),
 });
 

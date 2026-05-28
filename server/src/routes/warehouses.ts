@@ -4,6 +4,11 @@ import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
 import { requirePermission } from '../middleware/auth.js';
 
+const boolish = z.union([z.boolean(), z.number(), z.string()]).optional().transform(v => {
+  if (v === true || v === 1 || v === '1' || v === 'true') return true;
+  return false;
+});
+
 const warehouses = new Hono();
 
 const createWarehouseSchema = z.object({
@@ -14,13 +19,13 @@ const createWarehouseSchema = z.object({
   timezone: z.string().optional(),
   warehouse_type: z.enum(['DOMESTIC', 'OVERSEAS', 'FBA', 'THIRD_PARTY']),
   warehouse_category: z.enum(['SELF', 'WANYITONG', 'AMAZON_FBA', 'SICHUANG', 'ONNAT', 'OTHER']).optional(),
-  api_enabled: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
+  api_enabled: boolish,
   api_provider: z.enum(['WANYITONG', 'AMAZON', 'NONE']).optional(),
   api_config: z.any().optional(),
   api_sync_frequency: z.string().optional(),
   contact_name: z.string().optional(),
   contact_phone: z.string().optional(),
-  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
+  is_active: boolish,
   remark: z.string().optional(),
 });
 

@@ -5,6 +5,11 @@ import bcrypt from 'bcryptjs';
 import { db } from '../db/index.js';
 import { requirePermission } from '../middleware/auth.js';
 
+const boolish = z.union([z.boolean(), z.number(), z.string()]).optional().transform(v => {
+  if (v === true || v === 1 || v === '1' || v === 'true') return true;
+  return false;
+});
+
 const users = new Hono();
 
 const createUserSchema = z.object({
@@ -15,7 +20,7 @@ const createUserSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   team_id: z.number().optional().nullable(),
   role_id: z.number(),
-  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
+  is_active: boolish,
 });
 
 const updateUserSchema = z.object({
@@ -26,7 +31,7 @@ const updateUserSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   team_id: z.number().optional().nullable(),
   role_id: z.number().optional(),
-  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
+  is_active: boolish,
 });
 
 users.get('/', async (c) => {

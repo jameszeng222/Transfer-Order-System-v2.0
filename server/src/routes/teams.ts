@@ -4,13 +4,18 @@ import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
 import { requirePermission } from '../middleware/auth.js';
 
+const boolish = z.union([z.boolean(), z.number(), z.string()]).optional().transform(v => {
+  if (v === true || v === 1 || v === '1' || v === 'true') return true;
+  return false;
+});
+
 const teams = new Hono();
 
 const createTeamSchema = z.object({
   team_code: z.string().min(1),
   team_name: z.string().min(1),
   leader: z.string().optional(),
-  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
+  is_active: boolish,
   remark: z.string().optional(),
 });
 

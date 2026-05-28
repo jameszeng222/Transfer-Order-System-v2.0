@@ -83,6 +83,7 @@ export default function ConfigPage({
         pageSize: String(PAGE_SIZE),
       });
       if (keyword) params.set('keyword', keyword);
+      params.set('is_active', 'true');
       for (const [k, v] of Object.entries(filters)) {
         if (v) params.set(k, v);
       }
@@ -120,7 +121,13 @@ export default function ConfigPage({
 
   const openCreate = () => {
     setEditing(null);
-    setFormData({});
+    const defaults: Record<string, unknown> = {};
+    columns.forEach((col) => {
+      if (col.key === 'is_active' || col.key === 'api_enabled') {
+        defaults[col.key] = '1';
+      }
+    });
+    setFormData(defaults);
     setFormErrors({});
     setModalOpen(true);
   };
