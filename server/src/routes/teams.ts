@@ -10,7 +10,7 @@ const createTeamSchema = z.object({
   team_code: z.string().min(1),
   team_name: z.string().min(1),
   leader: z.string().optional(),
-  is_active: z.boolean().optional(),
+  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
   remark: z.string().optional(),
 });
 

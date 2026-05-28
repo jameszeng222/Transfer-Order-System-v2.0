@@ -16,7 +16,7 @@ const createCarrierSchema = z.object({
   settlement_cycle: z.string().optional(),
   contact_name: z.string().optional(),
   contact_phone: z.string().optional(),
-  is_active: z.boolean().optional(),
+  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
   remark: z.string().optional(),
 });
 

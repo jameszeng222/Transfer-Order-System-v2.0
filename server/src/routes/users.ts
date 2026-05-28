@@ -15,7 +15,7 @@ const createUserSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   team_id: z.number().optional().nullable(),
   role_id: z.number(),
-  is_active: z.boolean().optional(),
+  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
 });
 
 const updateUserSchema = z.object({
@@ -26,7 +26,7 @@ const updateUserSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   team_id: z.number().optional().nullable(),
   role_id: z.number().optional(),
-  is_active: z.boolean().optional(),
+  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
 });
 
 users.get('/', async (c) => {

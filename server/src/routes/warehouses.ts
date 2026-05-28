@@ -14,13 +14,13 @@ const createWarehouseSchema = z.object({
   timezone: z.string().optional(),
   warehouse_type: z.enum(['DOMESTIC', 'OVERSEAS', 'FBA', 'THIRD_PARTY']),
   warehouse_category: z.enum(['SELF', 'WANYITONG', 'AMAZON_FBA', 'SICHUANG', 'ONNAT', 'OTHER']).optional(),
-  api_enabled: z.boolean().optional(),
+  api_enabled: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
   api_provider: z.enum(['WANYITONG', 'AMAZON', 'NONE']).optional(),
   api_config: z.any().optional(),
   api_sync_frequency: z.string().optional(),
   contact_name: z.string().optional(),
   contact_phone: z.string().optional(),
-  is_active: z.boolean().optional(),
+  is_active: z.union([z.boolean(), z.number()]).optional().transform(v => v ? true : false),
   remark: z.string().optional(),
 });
 
