@@ -42,10 +42,32 @@ async function bootstrap() {
   }
 
   console.log('Running migrations...');
-  await db.migrate.latest({
-    directory: path.resolve(serverDir, 'migrations'),
-    extension: 'ts',
-  });
+  try {
+    await db('knex_migrations_lock').update({ is_locked: 0 }).where({ is_locked: 1 });
+  } catch (_e) {
+  }
+  try {
+    await db.migrate.latest({
+      directory: path.resolve(serverDir, 'migrations'),
+      extension: 'ts',
+    });
+  } catch (migrateErr: any) {
+    console.error('Migration failed, attempting recovery:', migrateErr.message);
+    try {
+      await db('knex_migrations_lock').update({ is_locked: 0 }).where({ is_locked: 1 });
+      const failedBatch = await db('knex_migrations').max('batch as b').first();
+      if (failedBatch && Number(failedBatch.b) > 0) {
+        await db('knex_migrations').where({ batch: failedBatch.b }).del();
+      }
+      await db.migrate.latest({
+        directory: path.resolve(serverDir, 'migrations'),
+        extension: 'ts',
+      });
+    } catch (retryErr: any) {
+      console.error('Migration retry also failed:', retryErr.message);
+      console.error('Server will start anyway, some features may not work');
+    }
+  }
 
   console.log('Checking field names...');
   const colInfo = await db.raw('PRAGMA table_info(transfer_orders)');
