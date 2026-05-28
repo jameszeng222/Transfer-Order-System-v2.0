@@ -47,6 +47,28 @@ async function bootstrap() {
     extension: 'ts',
   });
 
+  console.log('Checking field names...');
+  const colInfo = await db.raw('PRAGMA table_info(transfer_orders)');
+  const colNames = colInfo.map((r: any) => r.name);
+  const renames: [string, string][] = [
+    ['depart_time', 'departure_time'],
+    ['arrive_port_time', 'arrival_port_time'],
+    ['clearance_time', 'customs_clearance_time'],
+    ['delivery_time', 'logistics_sign_time'],
+    ['shelve_time', 'shelf_time'],
+  ];
+  for (const [oldName, newName] of renames) {
+    if (colNames.includes(oldName) && !colNames.includes(newName)) {
+      console.log(`Fixing column: ${oldName} → ${newName}`);
+      await db.raw(`ALTER TABLE transfer_orders RENAME COLUMN ${oldName} TO ${newName}`);
+    }
+  }
+  if (colNames.includes('order_remark')) {
+    console.log('Merging order_remark into remark...');
+    await db.raw('UPDATE transfer_orders SET remark = order_remark WHERE remark IS NULL AND order_remark IS NOT NULL');
+    await db.raw('ALTER TABLE transfer_orders DROP COLUMN order_remark');
+  }
+
   const hasUsers = await db('users').count('* as count').first();
   if (Number(hasUsers?.count) === 0) {
     console.log('Seeding foundational data (users missing)...');
