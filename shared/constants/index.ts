@@ -55,24 +55,38 @@ export const TransportTypeLabel: Record<TransportType, string> = {
 };
 
 export const WarehouseType = {
-  DOMESTIC: 'DOMESTIC',
-  OVERSEAS: 'OVERSEAS',
-  FBA: 'FBA',
-  THIRD_PARTY: 'THIRD_PARTY',
+  DOMESTIC_SELF: 'DOMESTIC_SELF',
+  DOMESTIC_3RD: 'DOMESTIC_3RD',
+  OVERSEAS_SELF: 'OVERSEAS_SELF',
+  OVERSEAS_3RD: 'OVERSEAS_3RD',
 } as const;
 
 export type WarehouseType = (typeof WarehouseType)[keyof typeof WarehouseType];
+
+export const WarehouseTypeLabel: Record<WarehouseType, string> = {
+  DOMESTIC_SELF: '国内自营',
+  DOMESTIC_3RD: '国内三方',
+  OVERSEAS_SELF: '海外自营',
+  OVERSEAS_3RD: '海外三方',
+};
 
 export const WarehouseCategory = {
   SELF: 'SELF',
   WANYITONG: 'WANYITONG',
   AMAZON_FBA: 'AMAZON_FBA',
-  SICHUANG: 'SICHUANG',
-  ONNAT: 'ONNAT',
+  FBT: 'FBT',
   OTHER: 'OTHER',
 } as const;
 
 export type WarehouseCategory = (typeof WarehouseCategory)[keyof typeof WarehouseCategory];
+
+export const WarehouseCategoryLabel: Record<WarehouseCategory, string> = {
+  SELF: '自营',
+  WANYITONG: '万邑通',
+  AMAZON_FBA: '亚马逊FBA',
+  FBT: 'FBT',
+  OTHER: '其他',
+};
 
 export const CarrierType = {
   INTERNATIONAL_EXPRESS: 'INTERNATIONAL_EXPRESS',

@@ -104,18 +104,18 @@ export async function seed(knex: Knex): Promise<void> {
   });
 
   await knex('warehouses').insert([
-    { warehouse_code: 'WH-SZ-01', warehouse_name: '深圳仓', region: '国内', country: '中国', timezone: 'Asia/Shanghai', warehouse_type: 'DOMESTIC', warehouse_category: 'SELF' },
-    { warehouse_code: 'WH-GZ-01', warehouse_name: '广州仓', region: '国内', country: '中国', timezone: 'Asia/Shanghai', warehouse_type: 'DOMESTIC', warehouse_category: 'SELF' },
-    { warehouse_code: 'WH-SH-01', warehouse_name: '上海仓', region: '国内', country: '中国', timezone: 'Asia/Shanghai', warehouse_type: 'DOMESTIC', warehouse_category: 'SELF' },
-    { warehouse_code: 'WH-YW-01', warehouse_name: '义乌仓', region: '国内', country: '中国', timezone: 'Asia/Shanghai', warehouse_type: 'DOMESTIC', warehouse_category: 'SELF' },
-    { warehouse_code: 'WH-US-LA', warehouse_name: '洛杉矶仓', region: '北美', country: '美国', timezone: 'America/Los_Angeles', warehouse_type: 'OVERSEAS', warehouse_category: 'WANYITONG', api_enabled: true, api_provider: 'WANYITONG' },
-    { warehouse_code: 'WH-US-NJ', warehouse_name: '新泽西仓', region: '北美', country: '美国', timezone: 'America/New_York', warehouse_type: 'OVERSEAS', warehouse_category: 'WANYITONG', api_enabled: true, api_provider: 'WANYITONG' },
-    { warehouse_code: 'WH-UK-LON', warehouse_name: '伦敦仓', region: '欧洲', country: '英国', timezone: 'Europe/London', warehouse_type: 'OVERSEAS', warehouse_category: 'WANYITONG' },
-    { warehouse_code: 'WH-DE-HAM', warehouse_name: '汉堡仓', region: '欧洲', country: '德国', timezone: 'Europe/Berlin', warehouse_type: 'OVERSEAS', warehouse_category: 'SICHUANG' },
-    { warehouse_code: 'WH-DE-FRA', warehouse_name: '法兰克福仓', region: '欧洲', country: '德国', timezone: 'Europe/Berlin', warehouse_type: 'OVERSEAS', warehouse_category: 'SICHUANG' },
-    { warehouse_code: 'WH-JP-TKY', warehouse_name: '东京仓', region: '亚太', country: '日本', timezone: 'Asia/Tokyo', warehouse_type: 'OVERSEAS', warehouse_category: 'ONNAT' },
-    { warehouse_code: 'WH-AU-SYD', warehouse_name: '悉尼仓', region: '亚太', country: '澳大利亚', timezone: 'Australia/Sydney', warehouse_type: 'OVERSEAS', warehouse_category: 'WANYITONG' },
-    { warehouse_code: 'WH-FBA-US', warehouse_name: 'FBA美国', region: '北美', country: '美国', timezone: 'America/Los_Angeles', warehouse_type: 'FBA', warehouse_category: 'AMAZON_FBA' },
+    { warehouse_code: 'WH-SZ-01', warehouse_name: '深圳仓', region: '国内', country: '中国', address: '深圳市宝安区福永街道怀德社区', postal_code: '518103', warehouse_type: 'DOMESTIC_SELF', warehouse_category: 'SELF' },
+    { warehouse_code: 'WH-GZ-01', warehouse_name: '广州仓', region: '国内', country: '中国', address: '广州市白云区太和镇大源路', postal_code: '510540', warehouse_type: 'DOMESTIC_SELF', warehouse_category: 'SELF' },
+    { warehouse_code: 'WH-SH-01', warehouse_name: '上海仓', region: '国内', country: '中国', address: '上海市嘉定区安亭镇曹安公路', postal_code: '201805', warehouse_type: 'DOMESTIC_SELF', warehouse_category: 'SELF' },
+    { warehouse_code: 'WH-YW-01', warehouse_name: '义乌仓', region: '国内', country: '中国', address: '义乌市北苑街道雪峰西路', postal_code: '322000', warehouse_type: 'DOMESTIC_SELF', warehouse_category: 'SELF' },
+    { warehouse_code: 'WH-US-LA', warehouse_name: '洛杉矶仓', region: '北美', country: '美国', address: '1850 E. Maple Ave, City of Industry, CA', postal_code: '91748', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG', api_enabled: true, api_provider: 'WANYITONG' },
+    { warehouse_code: 'WH-US-NJ', warehouse_name: '新泽西仓', region: '北美', country: '美国', address: '100 Middlesex Blvd, Edison, NJ', postal_code: '08817', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG', api_enabled: true, api_provider: 'WANYITONG' },
+    { warehouse_code: 'WH-UK-LON', warehouse_name: '伦敦仓', region: '欧洲', country: '英国', address: '2 Park Royal Road, London', postal_code: 'NW10 7LQ', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG' },
+    { warehouse_code: 'WH-DE-HAM', warehouse_name: '汉堡仓', region: '欧洲', country: '德国', address: 'Am Sandtorkai 48, Hamburg', postal_code: '20457', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'FBT' },
+    { warehouse_code: 'WH-DE-FRA', warehouse_name: '法兰克福仓', region: '欧洲', country: '德国', address: 'Gutleutstraße 100, Frankfurt', postal_code: '60327', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'FBT' },
+    { warehouse_code: 'WH-JP-TKY', warehouse_name: '东京仓', region: '亚太', country: '日本', address: '2-4-1 Nihonbashi, Chuo-ku, Tokyo', postal_code: '103-0027', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'FBT' },
+    { warehouse_code: 'WH-AU-SYD', warehouse_name: '悉尼仓', region: '亚太', country: '澳大利亚', address: '75 O'Riordan St, Alexandria NSW', postal_code: '2015', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG' },
+    { warehouse_code: 'WH-FBA-US', warehouse_name: 'FBA美国', region: '北美', country: '美国', address: 'Amazon FBA Warehouse', postal_code: '', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'AMAZON_FBA' },
   ]);
 
   const warehouseRows = await knex('warehouses').select('id', 'warehouse_code');
