@@ -74,6 +74,8 @@ const statusChangeSchema = z.object({
     'CANCELLED',
   ]),
   remark: z.string().optional(),
+  timeField: z.string().optional(),
+  timeValue: z.string().optional(),
 });
 
 const editOrderSchema = z.object({
@@ -392,7 +394,7 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
   if (!await requirePermission(c, 'order.confirm')) {
     return c.json({ success: false, error: '无权限' }, 403);
   }
-  const { transferNo, status: newStatus, remark } = c.req.valid('json');
+  const { transferNo, status: newStatus, remark, timeField, timeValue } = c.req.valid('json');
   const user = c.get('user');
 
   const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
@@ -424,10 +426,14 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
     update_time: now,
   };
 
-  if (newStatus === 'OUTBOUNDED' && !order.departure_time) updates.departure_time = now;
-  if (newStatus === 'IN_TRANSIT' && !order.pickup_time) updates.pickup_time = now;
-  if (newStatus === 'RECEIVED' && !order.logistics_sign_time) updates.logistics_sign_time = now;
-  if (newStatus === 'SHELVED' && !order.shelf_time) updates.shelf_time = now;
+  if (timeField && timeValue) {
+    updates[timeField] = timeValue;
+  }
+
+  if (newStatus === 'OUTBOUNDED' && !order.departure_time && !updates.departure_time) updates.departure_time = now;
+  if (newStatus === 'IN_TRANSIT' && !order.pickup_time && !updates.pickup_time) updates.pickup_time = now;
+  if (newStatus === 'RECEIVED' && !order.logistics_sign_time && !updates.logistics_sign_time) updates.logistics_sign_time = now;
+  if (newStatus === 'SHELVED' && !order.shelf_time && !updates.shelf_time) updates.shelf_time = now;
 
   const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
   Object.assign(updates, abnormalUpdates);

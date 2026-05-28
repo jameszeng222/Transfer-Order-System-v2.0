@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
-import { TransportTypeLabel, TransferStatusLabel } from 'shared/constants';
+import { TransportTypeLabel, TransferStatusLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransportType, TransferStatus } from 'shared/constants';
 import { StatCard, Card, Badge } from '../../components/ui';
 
@@ -32,16 +32,6 @@ interface InProgressOrder {
   has_outbound: boolean;
   has_freight: boolean;
 }
-
-const STATUS_BADGE_MAP: Record<string, 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'complete'> = {
-  PENDING_OUTBOUND: 'pending',
-  OUTBOUNDED: 'shipped',
-  IN_TRANSIT: 'transit',
-  RECEIVED: 'received',
-  SHELVED: 'shelved',
-  COMPLETED: 'complete',
-  CANCELLED: 'abnormal',
-};
 
 const statusSegments = [
   { label: '待出库', count: 12, color: '#6b7280', pct: 9 },
@@ -273,7 +263,7 @@ export default function DashboardPage() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
-                      <Badge variant={STATUS_BADGE_MAP[order.status] || 'pending'}>
+                      <Badge variant={StatusBadgeMap[order.status] || 'pending'}>
                         {TransferStatusLabel[order.status] || order.status}
                       </Badge>
                     </td>

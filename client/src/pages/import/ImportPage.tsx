@@ -3,7 +3,7 @@ import { Upload, Download } from 'lucide-react';
 import { Button, Card, Badge } from '../../components/ui';
 import { api } from '../../api/client';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+import { API_BASE } from '../../api/client';
 
 interface RowError { row: number; message: string; }
 interface ImportResult { total: number; success: number; failed: number; errors: RowError[]; createdOrders: number; updatedOrders: number; }

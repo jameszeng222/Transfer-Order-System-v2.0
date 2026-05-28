@@ -1,53 +1,11 @@
 import type { Knex } from 'knex';
 import bcrypt from 'bcryptjs';
+import { Permission, RolePermissions } from '../shared/constants/permissions.js';
 
-const ALL_PERMISSIONS = [
-  'order.view',
-  'order.import',
-  'order.edit',
-  'order.confirm',
-  'tracking.view',
-  'tracking.export',
-  'freight.view',
-  'freight.confirm',
-  'freight.reconcile',
-  'discrepancy.view',
-  'discrepancy.handle',
-  'reports.view',
-  'settings.manage',
-  'import.execute',
-];
-
-const OPERATOR_PERMISSIONS = [
-  'order.view',
-  'order.import',
-  'order.edit',
-  'order.confirm',
-  'tracking.view',
-  'tracking.export',
-  'freight.view',
-  'discrepancy.view',
-  'discrepancy.handle',
-  'reports.view',
-  'import.execute',
-];
-
-const WAREHOUSE_PERMISSIONS = [
-  'order.view',
-  'order.confirm',
-  'tracking.view',
-  'discrepancy.view',
-  'discrepancy.handle',
-  'import.execute',
-];
-
-const READONLY_PERMISSIONS = [
-  'order.view',
-  'tracking.view',
-  'freight.view',
-  'discrepancy.view',
-  'reports.view',
-];
+const ALL_PERMISSIONS = Object.values(Permission);
+const OPERATOR_PERMISSIONS = RolePermissions.OPERATOR;
+const WAREHOUSE_PERMISSIONS = RolePermissions.WAREHOUSE;
+const READONLY_PERMISSIONS = RolePermissions.READONLY;
 
 export async function seed(knex: Knex): Promise<void> {
   const existingUsers = await knex('users').count('* as c').first();

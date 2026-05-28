@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, RotateCcw, Upload, Plus, Download } from 'lucide-react';
-import { api } from '../../api/client';
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
-import { TransferStatusLabel, TransportTypeLabel } from 'shared/constants';
+import { Search, RotateCcw, Upload, Download } from 'lucide-react';
+import { api, API_BASE } from '../../api/client';
+import { TransferStatusLabel, TransportTypeLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
 import { Button, Card, FormField, Table, Badge, Pagination, TimeFilterPanel } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
@@ -37,16 +36,6 @@ interface Warehouse {
   warehouse_code: string;
   warehouse_name: string;
 }
-
-const STATUS_BADGE_MAP: Record<string, 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'complete'> = {
-  PENDING_OUTBOUND: 'pending',
-  OUTBOUNDED: 'shipped',
-  IN_TRANSIT: 'transit',
-  RECEIVED: 'received',
-  SHELVED: 'shelved',
-  COMPLETED: 'complete',
-  CANCELLED: 'abnormal',
-};
 
 const STATUS_OPTIONS: TransferStatus[] = [
   'PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED', 'COMPLETED', 'CANCELLED',
@@ -317,7 +306,7 @@ export default function OrderListPage() {
       title: '状态',
       render: (_, row) => (
         <span className="inline-flex items-center gap-1.5">
-          <Badge variant={STATUS_BADGE_MAP[row.status as string] || 'pending'}>
+          <Badge variant={StatusBadgeMap[row.status as TransferStatus] || 'pending'}>
             {TransferStatusLabel[row.status as TransferStatus] || (row.status as string)}
           </Badge>
           {row.is_timeout_warning ? <Badge variant="abnormal">超时</Badge> : null}
@@ -383,7 +372,6 @@ export default function OrderListPage() {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Button variant="primary" icon={Upload} onClick={() => navigate('/imports')}>导入调拨单</Button>
-        <Button variant="secondary" icon={Plus} onClick={() => navigate('/orders/new')}>手工创建</Button>
       </div>
 
       <Card padding="sm">

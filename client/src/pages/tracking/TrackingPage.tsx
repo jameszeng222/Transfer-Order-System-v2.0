@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, ShieldCheck, Search, RotateCcw } from 'lucide-react';
-import { api } from '../../api/client';
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+import { api, API_BASE } from '../../api/client';
 import { TransportTypeLabel } from 'shared/constants';
 import type { TransportType } from 'shared/constants';
 import { StatCard, Card, FormField, Table, Pagination, Button, Badge, TimeFilterPanel } from '../../components/ui';
@@ -222,7 +221,7 @@ export default function TrackingPage() {
 
   const handleSlaCheck = useCallback(async () => {
     try {
-      const res = await api.get<{ success: boolean; data: { checkedCount: number; newTimeoutCount: number } }>('/tracking/sla-check');
+      const res = await api.post<{ success: boolean; data: { checkedCount: number; newTimeoutCount: number } }>('/tracking/sla-check', {});
       if (res.success) {
         setSlaCheckResult(res.data);
         fetchDashboard();

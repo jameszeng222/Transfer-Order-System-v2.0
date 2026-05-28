@@ -3,6 +3,10 @@ import jwt from 'jsonwebtoken';
 import { db } from '../db/index.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[FATAL] JWT_SECRET must be set in production! Refusing to start with insecure default.');
+    process.exit(1);
+  }
   console.warn('[WARN] JWT_SECRET not set, using insecure default. Set JWT_SECRET env var in production!');
   return 'dev-secret-change-in-production';
 })();

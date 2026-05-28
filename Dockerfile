@@ -9,7 +9,7 @@ COPY server/package.json ./server/
 COPY shared/package.json ./shared/
 COPY client/package.json ./client/
 
-RUN npm install
+RUN npm ci
 
 COPY server ./server
 COPY shared ./shared

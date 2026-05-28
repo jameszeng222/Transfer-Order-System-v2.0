@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { api } from '../../api/client';
-import { TransferStatusLabel, TransportTypeLabel } from 'shared/constants';
+import { TransferStatusLabel, TransportTypeLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
 import { Button, Card, Badge, Table, EmptyState, Modal, FormField } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
@@ -30,11 +30,6 @@ interface OrderDetail {
   create_time: string; update_time: string;
   items: OrderItem[]; cartons: Carton[]; tracking_events: TrackingEvent[]; change_logs: ChangeLog[];
 }
-
-const STATUS_BADGE_MAP: Record<string, 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'complete'> = {
-  PENDING_OUTBOUND: 'pending', OUTBOUNDED: 'shipped', IN_TRANSIT: 'transit',
-  RECEIVED: 'received', SHELVED: 'shelved', COMPLETED: 'complete', CANCELLED: 'abnormal',
-};
 
 const NEXT_STATUS: Record<string, { label: string; value: TransferStatus }> = {
   PENDING_OUTBOUND: { label: '确认出库', value: 'OUTBOUNDED' },
@@ -263,22 +258,16 @@ export default function OrderDetailPage() {
     setActionLoading(true);
     try {
       const now = new Date().toISOString();
-      const res = await api.put<{ success: boolean; error?: string }>('/orders/edit', {
+      const res = await api.put<{ success: boolean; error?: string }>('/orders/status', {
         transferNo,
-        [field]: now,
+        status: targetStatus,
+        timeField: field,
+        timeValue: now,
       });
       if (res.success) {
-        const statusRes = await api.put<{ success: boolean; error?: string }>('/orders/status', {
-          transferNo,
-          status: targetStatus,
-        });
-        if (statusRes.success) {
-          await fetchOrder(transferNo);
-        } else {
-          alert(statusRes.error || '状态更新失败');
-        }
+        await fetchOrder(transferNo);
       } else {
-        alert(res.error || '时间更新失败');
+        alert(res.error || '状态更新失败');
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : '操作失败');
@@ -462,7 +451,7 @@ export default function OrderDetailPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
               <span className="text-base font-semibold text-text-primary">{order.inbound_order_no || order.transfer_no}</span>
-              <Badge variant={STATUS_BADGE_MAP[order.status] || 'pending'}>{TransferStatusLabel[order.status]}</Badge>
+              <Badge variant={StatusBadgeMap[order.status] || 'pending'}>{TransferStatusLabel[order.status]}</Badge>
             </div>
             <div className="text-xs text-text-tertiary mt-1">调拨单号：{order.transfer_no}</div>
           </div>

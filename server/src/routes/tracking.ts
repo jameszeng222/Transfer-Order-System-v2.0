@@ -538,7 +538,7 @@ tracking.get('/export', async (c) => {
   });
 });
 
-tracking.get('/sla-check', async (c) => {
+tracking.post('/sla-check', async (c) => {
   if (!await requirePermission(c, 'tracking.view')) {
     return c.json({ success: false, error: '无权限' }, 403);
   }

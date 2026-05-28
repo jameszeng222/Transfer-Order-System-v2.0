@@ -20,6 +20,18 @@ export const TransferStatusLabel: Record<TransferStatus, string> = {
   CANCELLED: '已取消',
 };
 
+export type BadgeVariant = 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'complete';
+
+export const StatusBadgeMap: Record<TransferStatus, BadgeVariant> = {
+  PENDING_OUTBOUND: 'pending',
+  OUTBOUNDED: 'shipped',
+  IN_TRANSIT: 'transit',
+  RECEIVED: 'received',
+  SHELVED: 'shelved',
+  COMPLETED: 'complete',
+  CANCELLED: 'abnormal',
+};
+
 export const TransferSource = {
   API_WANYITONG: 'API_WANYITONG',
   API_AMAZON: 'API_AMAZON',

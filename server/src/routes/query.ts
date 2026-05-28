@@ -1,9 +1,13 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
+import { requirePermission } from '../middleware/auth.js';
 
 const query = new Hono();
 
 query.post('/order', async (c) => {
+  if (!await requirePermission(c, 'order.view')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
   try {
     const body = await c.req.json().catch(() => ({}));
     const transferNo = body.tn || body.transferNo || c.req.header('X-Transfer-No') || '';

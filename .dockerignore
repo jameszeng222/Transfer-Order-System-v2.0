@@ -1,9 +1,7 @@
 node_modules
-client/dist
-server/dist
-*.db
-*.db-shm
-*.db-wal
+data
 .git
-.github
-.DS_Store
+*.md
+client/dist
+client/node_modules
+server/dist
