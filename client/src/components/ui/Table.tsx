@@ -1,9 +1,7 @@
-import type { ReactNode } from 'react';
-
 interface ColumnDef {
   key: string;
   title: string;
-  render?: (value: unknown, row: Record<string, unknown>) => ReactNode;
+  render?: (value: unknown, row: Record<string, unknown>) => React.ReactNode;
   width?: string;
   align?: 'left' | 'center' | 'right';
 }
@@ -131,7 +129,7 @@ export function Table({
                     >
                       {col.render
                         ? col.render(row[col.key], row)
-                        : (row[col.key] as ReactNode) ?? '--'}
+                        : (row[col.key] !== null && row[col.key] !== undefined ? String(row[col.key]) : '--')}
                     </td>
                   ))}
                 </tr>
