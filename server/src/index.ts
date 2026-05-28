@@ -70,8 +70,11 @@ async function bootstrap() {
   }
 
   const hasUsers = await db('users').count('* as count').first();
-  if (Number(hasUsers?.count) === 0) {
-    console.log('Seeding foundational data (users missing)...');
+  const hasWarehouses = await db('warehouses').count('* as count').first();
+  const hasCarriers = await db('carriers').count('* as count').first();
+  const hasTeams = await db('teams').count('* as count').first();
+  if (Number(hasUsers?.count) === 0 || Number(hasWarehouses?.count) === 0 || Number(hasCarriers?.count) === 0 || Number(hasTeams?.count) === 0) {
+    console.log('Seeding foundational data...');
     await db.seed.run({
       directory: path.resolve(serverDir, 'seeds'),
       extension: 'ts',
