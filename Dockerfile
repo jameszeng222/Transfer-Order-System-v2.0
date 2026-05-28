@@ -14,7 +14,9 @@ RUN npm install
 COPY server ./server
 COPY shared ./shared
 
-RUN mkdir -p data
+RUN mkdir -p /app/data
+
+VOLUME /app/data
 
 ENV PORT=3001
 EXPOSE 3001

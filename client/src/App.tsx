@@ -12,6 +12,7 @@ import CarrierPage from './pages/settings/CarrierPage';
 import TeamPage from './pages/settings/TeamPage';
 import UserPage from './pages/settings/UserPage';
 import SlaPage from './pages/settings/SlaPage';
+import SeedPage from './pages/settings/SeedPage';
 import DiscrepancyPage from './pages/discrepancy/DiscrepancyPage';
 import FreightPage from './pages/freight/FreightPage';
 import { useAuthStore } from './store/authStore';
@@ -47,6 +48,7 @@ function AppRoutes() {
       <Route path="/teams" element={<ProtectedRoute><Layout><TeamPage /></Layout></ProtectedRoute>} />
       <Route path="/users" element={<ProtectedRoute><Layout><UserPage /></Layout></ProtectedRoute>} />
       <Route path="/sla" element={<ProtectedRoute><Layout><SlaPage /></Layout></ProtectedRoute>} />
+      <Route path="/seed" element={<ProtectedRoute><Layout><SeedPage /></Layout></ProtectedRoute>} />
       <Route path="/discrepancies" element={<ProtectedRoute><Layout><DiscrepancyPage /></Layout></ProtectedRoute>} />
       <Route path="/freight" element={<ProtectedRoute><Layout><FreightPage /></Layout></ProtectedRoute>} />
     </Routes>

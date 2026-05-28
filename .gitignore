@@ -7,3 +7,4 @@ data/*.db
 .env.local
 data/transfer.db
 .superpowers/
+data/
