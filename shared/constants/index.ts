@@ -98,6 +98,14 @@ export const CarrierType = {
 
 export type CarrierType = (typeof CarrierType)[keyof typeof CarrierType];
 
+export const CarrierTypeLabel: Record<CarrierType, string> = {
+  INTERNATIONAL_EXPRESS: '国际快递',
+  INTERNATIONAL_SEA: '国际海运',
+  INTERNATIONAL_AIR: '国际空运',
+  RAIL: '铁路',
+  TRUCK: '卡车',
+};
+
 export const FreightAllocationMethod = {
   BY_QUANTITY: 'BY_QUANTITY',
   BY_WEIGHT: 'BY_WEIGHT',

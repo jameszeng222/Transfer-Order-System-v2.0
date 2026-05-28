@@ -14,7 +14,7 @@ const carriers = new Hono();
 const createCarrierSchema = z.object({
   carrier_code: z.string().min(1),
   carrier_name: z.string().min(1),
-  carrier_type: z.enum(['INTERNATIONAL_EXPRESS', 'INTERNATIONAL_SEA', 'INTERNATIONAL_AIR', 'RAIL', 'TRUCK']).optional(),
+  carrier_type: z.string().optional(),
   supported_transport_types: z.string().optional(),
   supported_routes: z.string().optional(),
   default_currency: z.string().optional(),

@@ -3,6 +3,7 @@ import { useRef, useEffect } from 'react';
 type FieldType =
   | 'text'
   | 'select'
+  | 'multiSelect'
   | 'textarea'
   | 'number'
   | 'date'
@@ -59,9 +60,21 @@ export function FormField({
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
     >,
   ) => {
-    if (type === 'switch') return;
+    if (type === 'switch' || type === 'multiSelect') return;
     const v = type === 'number' ? Number(e.target.value) : e.target.value;
     onChange(name, v);
+  };
+
+  const handleMultiSelectToggle = (optValue: string) => {
+    const current = String(value || '');
+    const parts = current ? current.split(',') : [];
+    const idx = parts.indexOf(optValue);
+    if (idx >= 0) {
+      parts.splice(idx, 1);
+    } else {
+      parts.push(optValue);
+    }
+    onChange(name, parts.join(','));
   };
 
   const inputClasses =
@@ -90,6 +103,30 @@ export function FormField({
               </option>
             ))}
           </select>
+        );
+
+      case 'multiSelect':
+        return (
+          <div className={`flex flex-wrap gap-1.5 p-2 border ${error ? 'border-red' : 'border-border'} rounded-md bg-bg-card min-h-[38px]`}>
+            {options.map((opt) => {
+              const current = String(value || '');
+              const selected = current ? current.split(',').includes(opt.value) : false;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleMultiSelectToggle(opt.value)}
+                  className={`px-2.5 py-1 rounded text-[12px] font-medium transition-colors cursor-pointer ${
+                    selected
+                      ? 'bg-accent text-white'
+                      : 'bg-bg-hover text-text-secondary hover:bg-gray-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
         );
 
       case 'textarea':

@@ -80,18 +80,6 @@ export async function seed(knex: Knex): Promise<void> {
 
   await knex('role_permissions').insert(rolePermissionData);
 
-  const [teamAId, teamBId, teamCId, teamDId] = await knex('teams').insert([
-    { team_code: 'TEAM_HN1', team_name: '华南一组', leader: '张三' },
-    { team_code: 'TEAM_HN2', team_name: '华南二组', leader: '李四' },
-    { team_code: 'TEAM_HD1', team_name: '华东一组', leader: '王五' },
-    { team_code: 'TEAM_HD2', team_name: '华东二组', leader: '赵六' },
-  ]).returning('id').then((rows) => rows.map((r) => r.id));
-
-  void teamAId;
-  void teamBId;
-  void teamCId;
-  void teamDId;
-
   const passwordHash = await bcrypt.hash('admin123', 10);
   await knex('users').insert({
     username: 'admin',
@@ -102,45 +90,4 @@ export async function seed(knex: Knex): Promise<void> {
     team_id: null,
     role_id: adminRoleId,
   });
-
-  await knex('warehouses').insert([
-    { warehouse_code: 'WH-SZ-01', warehouse_name: '深圳仓', region: '国内', country: '中国', address: '深圳市宝安区福永街道怀德社区', postal_code: '518103', warehouse_type: 'DOMESTIC_SELF', warehouse_category: 'SELF' },
-    { warehouse_code: 'WH-GZ-01', warehouse_name: '广州仓', region: '国内', country: '中国', address: '广州市白云区太和镇大源路', postal_code: '510540', warehouse_type: 'DOMESTIC_SELF', warehouse_category: 'SELF' },
-    { warehouse_code: 'WH-SH-01', warehouse_name: '上海仓', region: '国内', country: '中国', address: '上海市嘉定区安亭镇曹安公路', postal_code: '201805', warehouse_type: 'DOMESTIC_SELF', warehouse_category: 'SELF' },
-    { warehouse_code: 'WH-YW-01', warehouse_name: '义乌仓', region: '国内', country: '中国', address: '义乌市北苑街道雪峰西路', postal_code: '322000', warehouse_type: 'DOMESTIC_SELF', warehouse_category: 'SELF' },
-    { warehouse_code: 'WH-US-LA', warehouse_name: '洛杉矶仓', region: '北美', country: '美国', address: '1850 E. Maple Ave, City of Industry, CA', postal_code: '91748', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG', api_enabled: true, api_provider: 'WANYITONG' },
-    { warehouse_code: 'WH-US-NJ', warehouse_name: '新泽西仓', region: '北美', country: '美国', address: '100 Middlesex Blvd, Edison, NJ', postal_code: '08817', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG', api_enabled: true, api_provider: 'WANYITONG' },
-    { warehouse_code: 'WH-UK-LON', warehouse_name: '伦敦仓', region: '欧洲', country: '英国', address: '2 Park Royal Road, London', postal_code: 'NW10 7LQ', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG' },
-    { warehouse_code: 'WH-DE-HAM', warehouse_name: '汉堡仓', region: '欧洲', country: '德国', address: 'Am Sandtorkai 48, Hamburg', postal_code: '20457', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'FBT' },
-    { warehouse_code: 'WH-DE-FRA', warehouse_name: '法兰克福仓', region: '欧洲', country: '德国', address: 'Gutleutstraße 100, Frankfurt', postal_code: '60327', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'FBT' },
-    { warehouse_code: 'WH-JP-TKY', warehouse_name: '东京仓', region: '亚太', country: '日本', address: '2-4-1 Nihonbashi, Chuo-ku, Tokyo', postal_code: '103-0027', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'FBT' },
-    { warehouse_code: 'WH-AU-SYD', warehouse_name: '悉尼仓', region: '亚太', country: '澳大利亚', address: "75 O'Riordan St, Alexandria NSW", postal_code: '2015', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG' },
-    { warehouse_code: 'WH-FBA-US', warehouse_name: 'FBA美国', region: '北美', country: '美国', address: 'Amazon FBA Warehouse', postal_code: '', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'AMAZON_FBA' },
-  ]);
-
-  const warehouseRows = await knex('warehouses').select('id', 'warehouse_code');
-  const whIdMap: Record<string, number> = {};
-  for (const row of warehouseRows) {
-    whIdMap[row.warehouse_code] = row.id;
-  }
-
-  await knex('carriers').insert([
-    { carrier_code: 'CARRIER-001', carrier_name: '万邑通', carrier_type: 'INTERNATIONAL_SEA' },
-    { carrier_code: 'CARRIER-002', carrier_name: '递四方', carrier_type: 'INTERNATIONAL_EXPRESS' },
-    { carrier_code: 'CARRIER-003', carrier_name: '纵腾', carrier_type: 'INTERNATIONAL_SEA' },
-    { carrier_code: 'CARRIER-004', carrier_name: '中外运', carrier_type: 'INTERNATIONAL_SEA' },
-    { carrier_code: 'CARRIER-005', carrier_name: '顺丰国际', carrier_type: 'INTERNATIONAL_AIR' },
-    { carrier_code: 'CARRIER-006', carrier_name: '中欧铁路', carrier_type: 'RAIL' },
-  ]);
-
-  await knex('sla_rules').insert([
-    { dest_warehouse_id: whIdMap['WH-US-LA'], transport_type: 'SEA', sla_days: 35, shelf_sla_days: 3 },
-    { dest_warehouse_id: whIdMap['WH-US-LA'], transport_type: 'AIR', sla_days: 7, shelf_sla_days: 3 },
-    { dest_warehouse_id: whIdMap['WH-US-NJ'], transport_type: 'SEA', sla_days: 40, shelf_sla_days: 3 },
-    { dest_warehouse_id: whIdMap['WH-US-NJ'], transport_type: 'AIR', sla_days: 8, shelf_sla_days: 3 },
-    { dest_warehouse_id: whIdMap['WH-UK-LON'], transport_type: 'SEA', sla_days: 30, shelf_sla_days: 3 },
-    { dest_warehouse_id: whIdMap['WH-DE-HAM'], transport_type: 'RAIL', sla_days: 20, shelf_sla_days: 3 },
-    { dest_warehouse_id: whIdMap['WH-JP-TKY'], transport_type: 'SEA', sla_days: 10, shelf_sla_days: 3 },
-  ]);
-
 }

@@ -14,7 +14,7 @@ import { EmptyState } from './ui/EmptyState';
 interface ColumnDef {
   key: string;
   title: string;
-  type?: 'text' | 'select' | 'number' | 'date' | 'switch' | 'badge';
+  type?: 'text' | 'select' | 'multiSelect' | 'number' | 'date' | 'switch' | 'badge';
   options?: { label: string; value: string }[];
   badgeColors?: Record<string, string>;
   required?: boolean;
@@ -225,13 +225,31 @@ export default function ConfigPage({
                 const colorClass = col.badgeColors?.[strVal];
                 return <Badge color={colorClass}>{label}</Badge>;
               }
-            : col.type === 'switch'
-              ? (value: unknown) => (
-                  <Badge variant={value ? 'received' : 'pending'}>
-                    {value ? '启用' : '禁用'}
-                  </Badge>
-                )
-              : undefined,
+            : col.type === 'multiSelect'
+              ? (value: unknown) => {
+                  const strVal = String(value ?? '');
+                  if (!strVal) return <span className="text-text-tertiary">--</span>;
+                  const selected = strVal.split(',');
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      {selected.map((v) => {
+                        const label = col.options?.find((o) => o.value === v)?.label || v;
+                        return (
+                          <span key={v} className="inline-block px-1.5 py-0.5 text-[11px] rounded bg-blue-50 text-blue-700">
+                            {label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+              : col.type === 'switch'
+                ? (value: unknown) => (
+                    <Badge variant={value ? 'received' : 'pending'}>
+                      {value ? '启用' : '禁用'}
+                    </Badge>
+                  )
+                : undefined,
       })),
     ...(canManage
       ? [
@@ -340,7 +358,7 @@ export default function ConfigPage({
               key={col.key}
               label={col.title}
               name={col.key}
-              type={col.type === 'badge' ? 'select' : col.type || 'text'}
+              type={col.type === 'badge' ? 'select' : (col.type === 'multiSelect' ? 'multiSelect' : col.type || 'text')}
               value={formData[col.key]}
               onChange={handleFormChange}
               error={formErrors[col.key]}
