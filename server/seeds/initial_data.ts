@@ -114,7 +114,7 @@ export async function seed(knex: Knex): Promise<void> {
     { warehouse_code: 'WH-DE-HAM', warehouse_name: '汉堡仓', region: '欧洲', country: '德国', address: 'Am Sandtorkai 48, Hamburg', postal_code: '20457', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'FBT' },
     { warehouse_code: 'WH-DE-FRA', warehouse_name: '法兰克福仓', region: '欧洲', country: '德国', address: 'Gutleutstraße 100, Frankfurt', postal_code: '60327', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'FBT' },
     { warehouse_code: 'WH-JP-TKY', warehouse_name: '东京仓', region: '亚太', country: '日本', address: '2-4-1 Nihonbashi, Chuo-ku, Tokyo', postal_code: '103-0027', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'FBT' },
-    { warehouse_code: 'WH-AU-SYD', warehouse_name: '悉尼仓', region: '亚太', country: '澳大利亚', address: '75 O'Riordan St, Alexandria NSW', postal_code: '2015', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG' },
+    { warehouse_code: 'WH-AU-SYD', warehouse_name: '悉尼仓', region: '亚太', country: '澳大利亚', address: "75 O'Riordan St, Alexandria NSW", postal_code: '2015', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'WANYITONG' },
     { warehouse_code: 'WH-FBA-US', warehouse_name: 'FBA美国', region: '北美', country: '美国', address: 'Amazon FBA Warehouse', postal_code: '', warehouse_type: 'OVERSEAS_3RD', warehouse_category: 'AMAZON_FBA' },
   ]);
 
