@@ -48,7 +48,7 @@ interface Warehouse {
   warehouse_name: string;
 }
 
-const TRANSPORT_OPTIONS: TransportType[] = ['SEA', 'AIR', 'RAIL', 'TRUCK'];
+const TRANSPORT_OPTIONS: TransportType[] = ['SEA', 'AIR', 'RAIL', 'TRUCK', 'EXPRESS', 'FAST_SEA', 'SPECIAL'];
 
 const ABNORMAL_OPTIONS = [
   { label: '物流异常', value: 'logistics' },

@@ -64,7 +64,7 @@ export default function SlaPage() {
     return wh?.warehouse_name || String(id || '--');
   };
 
-  const transportLabels: Record<string, string> = { SEA: '海运', AIR: '空运', RAIL: '铁路', TRUCK: '卡车' };
+  const transportLabels: Record<string, string> = { SEA: '海运', AIR: '空运', RAIL: '铁路', TRUCK: '卡车', EXPRESS: '快递', FAST_SEA: '快船', SPECIAL: '专线' };
 
   const fetchData = useCallback(async () => {
     setLoading(true);

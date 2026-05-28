@@ -43,6 +43,9 @@ export const TransportType = {
   AIR: 'AIR',
   RAIL: 'RAIL',
   TRUCK: 'TRUCK',
+  EXPRESS: 'EXPRESS',
+  FAST_SEA: 'FAST_SEA',
+  SPECIAL: 'SPECIAL',
 } as const;
 
 export type TransportType = (typeof TransportType)[keyof typeof TransportType];
@@ -52,6 +55,9 @@ export const TransportTypeLabel: Record<TransportType, string> = {
   AIR: '空运',
   RAIL: '铁路',
   TRUCK: '卡车',
+  EXPRESS: '快递',
+  FAST_SEA: '快船',
+  SPECIAL: '专线',
 };
 
 export const WarehouseType = {

@@ -142,6 +142,9 @@ const TRANSPORT_TYPE_MAP: Record<string, string> = {
   '铁路': 'RAIL',
   '卡航': 'TRUCK',
   '卡车': 'TRUCK',
+  '快递': 'EXPRESS',
+  '快船': 'FAST_SEA',
+  '专线': 'SPECIAL',
 };
 
 const BOOLEAN_MAP: Record<string, boolean> = {
