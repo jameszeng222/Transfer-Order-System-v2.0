@@ -1,6 +1,39 @@
 import * as XLSX from 'xlsx';
 import { db } from '../db/index.js';
 
+const COLUMN_MAP: Record<string, string> = {
+  '第三方入库单号': 'inbound_order_no',
+  '调拨单号': 'transfer_no_import',
+  '出库单号': 'outbound_order_no',
+  '创建时间': 'create_time',
+  '发货仓': 'from_warehouse',
+  '目的仓': 'to_warehouse',
+  '团队': 'team',
+  '箱号（赫特）': 'carton_no_hermes',
+  '赫特SKU': 'sku_code',
+  '赫特产品名称': 'sku_name',
+  '品名': 'product_name',
+  '第三方SKU': 'overseas_sku_code',
+  '计划数量': 'expected_qty',
+  '是否报关': 'is_customs_declared',
+  '报关工厂': 'customs_factory',
+  '时效要求': 'timeline_requirement_days',
+  '运输类型': 'transport_type',
+  '物流商': 'logistics_carrier',
+  '提货时间': 'pickup_time',
+  '箱号': 'carton_no',
+  '实发数量': 'outbound_qty',
+  '箱规码': 'carton_spec_code',
+  '长': 'carton_length',
+  '宽': 'carton_width',
+  '高': 'carton_height',
+  '申报货值': 'declared_value',
+  '仓库实重': 'carton_weight',
+  '渠道实重': 'channel_weight',
+  '单价': 'estimated_unit_price',
+  '备注': 'remark',
+};
+
 const OUTBOUND_COLUMN_MAP: Record<string, string> = {
   '第三方入库单号': 'inbound_order_no',
   'SKU编码': 'sku_code',
@@ -103,39 +136,6 @@ const FREIGHT_COLUMN_MAP: Record<string, string> = {
   '备注': 'remark',
 };
 
-const COLUMN_MAP: Record<string, string> = {
-  '第三方入库单号': 'inbound_order_no',
-  'ERP单号': 'erp_order_no',
-  '出库单号': 'outbound_order_no',
-  '来源仓': 'from_warehouse',
-  '目的仓': 'to_warehouse',
-  '业务团队': 'team',
-  '数据来源': 'source',
-  '调拨类型': 'transfer_type',
-  '运输类型': 'transport_type',
-  '箱号': 'carton_no',
-  '物流跟踪号': 'logistics_tracking_no',
-  '物流商': 'logistics_carrier',
-  'SKU编码': 'sku_code',
-  'SKU名称': 'sku_name',
-  '应调拨数量': 'expected_qty',
-  '海外仓SKU': 'overseas_sku_code',
-  '品名': 'product_name',
-  '是否报关': 'is_customs_declared',
-  '报关工厂': 'customs_factory',
-  '是否查验': 'is_inspected',
-  '时效要求(天)': 'timeline_requirement_days',
-  '订单备注': 'remark',
-  '尾程类型': 'last_mile_type',
-  '尾程渠道': 'last_mile_channel',
-  '预估单价': 'estimated_unit_price',
-  '运费币种': 'freight_currency',
-  '运费分摊方式': 'freight_allocation_method',
-  '备注': 'remark',
-  '创建时间': 'create_time',
-  '出库时间': 'departure_time',
-};
-
 const TRANSPORT_TYPE_MAP: Record<string, string> = {
   '海运': 'SEA',
   '空运': 'AIR',
@@ -144,36 +144,21 @@ const TRANSPORT_TYPE_MAP: Record<string, string> = {
   '卡车': 'TRUCK',
 };
 
-const SOURCE_MAP: Record<string, string> = {
-  '万邑通API': 'API_WANYITONG',
-  '亚马逊': 'API_AMAZON',
-  '手工创建': 'MANUAL',
-  '其他': 'OTHER',
-};
-
-const TRANSFER_TYPE_MAP: Record<string, string> = {
-  '国内→海外': 'DOMESTIC_TO_OVERSEAS',
-  '海外→海外': 'OVERSEAS_TO_OVERSEAS',
-  '退货返架': 'RETURN_TO_SHELF',
-  'FBA出库': 'FBA_OUTBOUND',
-};
-
 const BOOLEAN_MAP: Record<string, boolean> = {
   '是': true,
   '否': false,
 };
 
-const REQUIRED_FIELDS = ['inbound_order_no', 'from_warehouse', 'to_warehouse', 'transport_type', 'carton_no', 'sku_code', 'expected_qty'];
-
 const ORDER_LEVEL_FIELDS = [
-  'erp_order_no', 'outbound_order_no', 'from_warehouse', 'to_warehouse',
-  'team', 'source', 'transfer_type', 'transport_type',
-  'logistics_tracking_no', 'logistics_carrier',
-  'is_customs_declared', 'customs_factory', 'is_inspected',
-  'timeline_requirement_days', 'remark',
-  'last_mile_type', 'last_mile_channel',
-  'estimated_unit_price', 'freight_currency', 'freight_allocation_method', 'remark',
-  'create_time', 'departure_time',
+  'outbound_order_no', 'from_warehouse', 'to_warehouse', 'team',
+  'is_customs_declared', 'customs_factory', 'timeline_requirement_days',
+  'transport_type', 'logistics_carrier', 'pickup_time',
+  'estimated_unit_price', 'remark', 'create_time',
+];
+
+const CARTON_LEVEL_FIELDS = [
+  'carton_spec_code', 'carton_length', 'carton_width', 'carton_height',
+  'declared_value', 'carton_weight', 'channel_weight',
 ];
 
 interface RowError {
@@ -195,22 +180,20 @@ interface ImportResult {
   updatedOrders: number;
 }
 
+function hasValue(v: any): boolean {
+  return v !== undefined && v !== null && v !== '';
+}
+
 function mapChineseValue(field: string, value: any): any {
-  if (value === undefined || value === null || value === '') return undefined;
+  if (!hasValue(value)) return undefined;
 
   if (field === 'transport_type' && typeof value === 'string') {
     return TRANSPORT_TYPE_MAP[value] || value;
   }
-  if (field === 'source' && typeof value === 'string') {
-    return SOURCE_MAP[value] || value;
-  }
-  if (field === 'transfer_type' && typeof value === 'string') {
-    return TRANSFER_TYPE_MAP[value] || value;
-  }
-  if ((field === 'is_customs_declared' || field === 'is_inspected') && typeof value === 'string') {
+  if (field === 'is_customs_declared' && typeof value === 'string') {
     return BOOLEAN_MAP[value] ?? value;
   }
-  if (field === 'expected_qty') {
+  if (field === 'expected_qty' || field === 'outbound_qty') {
     const num = Number(value);
     if (isNaN(num)) return value;
     return Math.round(num);
@@ -220,12 +203,16 @@ function mapChineseValue(field: string, value: any): any {
     if (isNaN(num)) return undefined;
     return Math.round(num);
   }
-  if (field === 'estimated_unit_price') {
+  if (
+    field === 'estimated_unit_price' ||
+    field === 'carton_length' || field === 'carton_width' || field === 'carton_height' ||
+    field === 'declared_value' || field === 'carton_weight' || field === 'channel_weight'
+  ) {
     const num = Number(value);
     if (isNaN(num)) return undefined;
     return num;
   }
-  if (field === 'create_time' || field === 'departure_time') {
+  if (field === 'create_time' || field === 'pickup_time') {
     return parseExcelDate(value);
   }
   return value;
@@ -252,21 +239,24 @@ function mapRows(headers: string[], rows: any[][]): ParsedRow[] {
         mapped[field] = mapChineseValue(field, raw);
       }
     });
+    if (!hasValue(mapped.carton_no) && hasValue(mapped.carton_no_hermes)) {
+      mapped.carton_no = mapped.carton_no_hermes;
+    }
     return mapped;
   });
 }
 
-function validateRow(row: ParsedRow): string | null {
-  for (const field of REQUIRED_FIELDS) {
-    if (row[field] === undefined || row[field] === null || row[field] === '') {
-      const cnName = Object.entries(COLUMN_MAP).find(([, v]) => v === field)?.[0] || field;
-      return `必填字段缺失: ${cnName}`;
-    }
-  }
-  if (row.expected_qty !== undefined && isNaN(Number(row.expected_qty))) {
-    return '数量格式错误: 应调拨数量';
-  }
-  return null;
+function mapRowsWithColumnMap(headers: string[], rows: any[][], columnMap: Record<string, string>): ParsedRow[] {
+  const fieldHeaders = headers.map((h) => columnMap[h] || h);
+  return rows.map((row, idx) => {
+    const mapped: ParsedRow = { _rowIndex: idx + 2 };
+    fieldHeaders.forEach((field, colIdx) => {
+      if (field) {
+        mapped[field] = row[colIdx];
+      }
+    });
+    return mapped;
+  });
 }
 
 async function generateTransferNo(trx: any): Promise<string> {
@@ -327,10 +317,11 @@ async function processOrderGroup(
   if (existingOrder) {
     const orderData: Record<string, any> = { update_time: new Date().toISOString() };
     for (const field of ORDER_LEVEL_FIELDS) {
-      if (firstRow[field] !== undefined && firstRow[field] !== null && firstRow[field] !== '') {
+      if (hasValue(firstRow[field])) {
         orderData[field] = firstRow[field];
       }
     }
+
     await trx('transfer_orders').where({ id: existingOrder.id }).update(orderData);
 
     await mergeSubRecords(trx, existingOrder.transfer_no, inboundOrderNo, rows);
@@ -349,7 +340,9 @@ async function processOrderGroup(
 
     return 'updated';
   } else {
-    const transferNo = await generateTransferNo(trx);
+    const transferNo = hasValue(firstRow.transfer_no_import)
+      ? String(firstRow.transfer_no_import)
+      : await generateTransferNo(trx);
 
     const orderData: Record<string, any> = {
       transfer_no: transferNo,
@@ -362,28 +355,16 @@ async function processOrderGroup(
       update_time: new Date().toISOString(),
     };
     for (const field of ORDER_LEVEL_FIELDS) {
-      if (field === 'create_time' || field === 'departure_time') continue;
-      if (firstRow[field] !== undefined && firstRow[field] !== null && firstRow[field] !== '') {
+      if (field === 'create_time') continue;
+      if (hasValue(firstRow[field])) {
         orderData[field] = firstRow[field];
       }
-    }
-    if (firstRow.departure_time !== undefined && firstRow.departure_time !== null && firstRow.departure_time !== '') {
-      orderData.departure_time = firstRow.departure_time;
     }
     const [inserted] = await trx('transfer_orders').insert(orderData).returning('*');
 
     await createSubRecords(trx, transferNo, inboundOrderNo, rows);
 
-    const skuSet = new Set(rows.map((r) => r.sku_code));
-    const cartonSet = new Set(rows.map((r) => r.carton_no));
-    const totalQty = rows.reduce((sum, r) => sum + (Number(r.expected_qty) || 0), 0);
-
-    await trx('transfer_orders').where({ id: inserted.id }).update({
-      total_sku_count: skuSet.size,
-      total_qty: totalQty,
-      total_carton_count: cartonSet.size,
-      update_time: new Date().toISOString(),
-    });
+    await recalcOrderStats(trx, transferNo);
 
     await trx('change_logs').insert({
       record_type: 'transfer_order',
@@ -401,15 +382,32 @@ async function processOrderGroup(
   }
 }
 
+async function recalcOrderStats(trx: any, transferNo: string): Promise<void> {
+  const allCartons = await trx('transfer_cartons').where({ transfer_no: transferNo });
+  const allItems = await trx('transfer_order_items').where({ transfer_no: transferNo });
+  const totalQty = allItems.reduce((sum: number, item: any) => sum + (Number(item.expected_qty) || 0), 0);
+  const skuSet = new Set(allItems.map((i: any) => i.sku_code));
+
+  await trx('transfer_orders').where({ transfer_no: transferNo }).update({
+    total_sku_count: skuSet.size,
+    total_qty: totalQty,
+    total_carton_count: allCartons.length,
+    update_time: new Date().toISOString(),
+  });
+}
+
 async function createSubRecords(
   trx: any,
   transferNo: string,
   inboundOrderNo: string,
   rows: ParsedRow[],
 ): Promise<void> {
+  const rowsWithCarton = rows.filter((r) => hasValue(r.carton_no));
+  const rowsWithSku = rows.filter((r) => hasValue(r.sku_code));
+
   const cartonGroups: Record<string, ParsedRow[]> = {};
-  for (const row of rows) {
-    const key = row.carton_no;
+  for (const row of rowsWithCarton) {
+    const key = String(row.carton_no);
     if (!cartonGroups[key]) cartonGroups[key] = [];
     cartonGroups[key].push(row);
   }
@@ -419,16 +417,25 @@ async function createSubRecords(
 
   for (const [cartonNo, cartonRows] of Object.entries(cartonGroups)) {
     const firstCartonRow = cartonRows[0];
-    allCartons.push({
+    const cartonData: Record<string, any> = {
       transfer_no: transferNo,
       inbound_order_no: inboundOrderNo,
       carton_no: cartonNo,
-      logistics_tracking_no: firstCartonRow.logistics_tracking_no || null,
       create_time: new Date().toISOString(),
       update_time: new Date().toISOString(),
-    });
+    };
+    for (const field of CARTON_LEVEL_FIELDS) {
+      if (hasValue(firstCartonRow[field])) {
+        cartonData[field] = firstCartonRow[field];
+      }
+    }
+    if (hasValue(firstCartonRow.logistics_tracking_no)) {
+      cartonData.logistics_tracking_no = firstCartonRow.logistics_tracking_no;
+    }
+    allCartons.push(cartonData);
 
     for (const row of cartonRows) {
+      if (!hasValue(row.sku_code)) continue;
       allCartonItems.push({
         carton_no: cartonNo,
         transfer_no: transferNo,
@@ -446,8 +453,8 @@ async function createSubRecords(
   await batchInsert(trx, 'transfer_carton_items', allCartonItems);
 
   const skuGroups: Record<string, ParsedRow[]> = {};
-  for (const row of rows) {
-    const key = row.sku_code;
+  for (const row of rowsWithSku) {
+    const key = String(row.sku_code);
     if (!skuGroups[key]) skuGroups[key] = [];
     skuGroups[key].push(row);
   }
@@ -455,6 +462,7 @@ async function createSubRecords(
   const allOrderItems: any[] = [];
   for (const [skuCode, skuRows] of Object.entries(skuGroups)) {
     const totalExpectedQty = skuRows.reduce((sum, r) => sum + (Number(r.expected_qty) || 0), 0);
+    const totalOutboundQty = skuRows.reduce((sum, r) => sum + (Number(r.outbound_qty) || 0), 0);
     const firstSkuRow = skuRows[0];
     allOrderItems.push({
       transfer_no: transferNo,
@@ -462,25 +470,12 @@ async function createSubRecords(
       sku_code: skuCode,
       sku_name: firstSkuRow.sku_name || null,
       expected_qty: totalExpectedQty,
-      outbound_qty: 0,
+      outbound_qty: totalOutboundQty,
       inbound_qty: 0,
       shelf_qty: 0,
     });
   }
   await batchInsert(trx, 'transfer_order_items', allOrderItems);
-
-  if (await trx('transfer_orders').where({ transfer_no: transferNo }).first()) {
-    const skuSet = new Set(rows.map((r) => r.sku_code));
-    const cartonSet = new Set(rows.map((r) => r.carton_no));
-    const totalQty = rows.reduce((sum, r) => sum + (Number(r.expected_qty) || 0), 0);
-
-    await trx('transfer_orders').where({ transfer_no: transferNo }).update({
-      total_sku_count: skuSet.size,
-      total_qty: totalQty,
-      total_carton_count: cartonSet.size,
-      update_time: new Date().toISOString(),
-    });
-  }
 }
 
 async function mergeSubRecords(
@@ -489,17 +484,20 @@ async function mergeSubRecords(
   inboundOrderNo: string,
   rows: ParsedRow[],
 ): Promise<void> {
+  const rowsWithCarton = rows.filter((r) => hasValue(r.carton_no));
+  const rowsWithSku = rows.filter((r) => hasValue(r.sku_code));
+
   const cartonGroups: Record<string, ParsedRow[]> = {};
-  for (const row of rows) {
-    const key = row.carton_no;
+  for (const row of rowsWithCarton) {
+    const key = String(row.carton_no);
     if (!cartonGroups[key]) cartonGroups[key] = [];
     cartonGroups[key].push(row);
   }
 
   const cartonNos = Object.keys(cartonGroups);
-  const existingCartons = await trx('transfer_cartons')
-    .where({ transfer_no: transferNo })
-    .whereIn('carton_no', cartonNos);
+  const existingCartons = cartonNos.length > 0
+    ? await trx('transfer_cartons').where({ transfer_no: transferNo }).whereIn('carton_no', cartonNos)
+    : [];
   const existingCartonMap: Map<string, any> = new Map(existingCartons.map((c: any) => [c.carton_no, c]));
 
   const newCartons: any[] = [];
@@ -512,24 +510,38 @@ async function mergeSubRecords(
 
     if (existingCarton) {
       const cartonUpdates: Record<string, any> = { update_time: new Date().toISOString() };
-      if (firstCartonRow.logistics_tracking_no !== undefined && firstCartonRow.logistics_tracking_no !== null && firstCartonRow.logistics_tracking_no !== '') {
+      for (const field of CARTON_LEVEL_FIELDS) {
+        if (hasValue(firstCartonRow[field])) {
+          cartonUpdates[field] = firstCartonRow[field];
+        }
+      }
+      if (hasValue(firstCartonRow.logistics_tracking_no)) {
         cartonUpdates.logistics_tracking_no = firstCartonRow.logistics_tracking_no;
       }
       if (Object.keys(cartonUpdates).length > 1) {
         cartonUpdateList.push({ id: existingCarton.id, data: cartonUpdates });
       }
     } else {
-      newCartons.push({
+      const cartonData: Record<string, any> = {
         transfer_no: transferNo,
         inbound_order_no: inboundOrderNo,
         carton_no: cartonNo,
-        logistics_tracking_no: firstCartonRow.logistics_tracking_no || null,
         create_time: new Date().toISOString(),
         update_time: new Date().toISOString(),
-      });
+      };
+      for (const field of CARTON_LEVEL_FIELDS) {
+        if (hasValue(firstCartonRow[field])) {
+          cartonData[field] = firstCartonRow[field];
+        }
+      }
+      if (hasValue(firstCartonRow.logistics_tracking_no)) {
+        cartonData.logistics_tracking_no = firstCartonRow.logistics_tracking_no;
+      }
+      newCartons.push(cartonData);
     }
 
     for (const row of cartonRows) {
+      if (!hasValue(row.sku_code)) continue;
       allCartonItems.push({
         carton_no: cartonNo,
         transfer_no: transferNo,
@@ -543,26 +555,28 @@ async function mergeSubRecords(
     }
   }
 
-  await trx('transfer_carton_items')
-    .where({ transfer_no: transferNo })
-    .whereIn('carton_no', cartonNos)
-    .del();
+  if (cartonNos.length > 0) {
+    await trx('transfer_carton_items')
+      .where({ transfer_no: transferNo })
+      .whereIn('carton_no', cartonNos)
+      .del();
+  }
 
   await batchInsert(trx, 'transfer_cartons', newCartons);
   await batchUpdateGrouped(trx, 'transfer_cartons', cartonUpdateList);
   await batchInsert(trx, 'transfer_carton_items', allCartonItems);
 
   const skuGroups: Record<string, ParsedRow[]> = {};
-  for (const row of rows) {
-    const key = row.sku_code;
+  for (const row of rowsWithSku) {
+    const key = String(row.sku_code);
     if (!skuGroups[key]) skuGroups[key] = [];
     skuGroups[key].push(row);
   }
 
   const skuCodes = Object.keys(skuGroups);
-  const existingItems = await trx('transfer_order_items')
-    .where({ transfer_no: transferNo })
-    .whereIn('sku_code', skuCodes);
+  const existingItems = skuCodes.length > 0
+    ? await trx('transfer_order_items').where({ transfer_no: transferNo }).whereIn('sku_code', skuCodes)
+    : [];
   const existingItemMap: Map<string, any> = new Map(existingItems.map((i: any) => [i.sku_code, i]));
 
   const newOrderItems: any[] = [];
@@ -570,16 +584,20 @@ async function mergeSubRecords(
 
   for (const [skuCode, skuRows] of Object.entries(skuGroups)) {
     const totalExpectedQty = skuRows.reduce((sum, r) => sum + (Number(r.expected_qty) || 0), 0);
+    const totalOutboundQty = skuRows.reduce((sum, r) => sum + (Number(r.outbound_qty) || 0), 0);
     const firstSkuRow = skuRows[0];
     const existingItem = existingItemMap.get(skuCode);
 
     if (existingItem) {
       const itemUpdates: Record<string, any> = {};
-      if (firstSkuRow.sku_name !== undefined && firstSkuRow.sku_name !== null && firstSkuRow.sku_name !== '') {
+      if (hasValue(firstSkuRow.sku_name)) {
         itemUpdates.sku_name = firstSkuRow.sku_name;
       }
       if (totalExpectedQty > 0) {
         itemUpdates.expected_qty = totalExpectedQty;
+      }
+      if (totalOutboundQty > 0) {
+        itemUpdates.outbound_qty = totalOutboundQty;
       }
       if (Object.keys(itemUpdates).length > 0) {
         itemUpdateList.push({ id: existingItem.id, data: itemUpdates });
@@ -591,7 +609,7 @@ async function mergeSubRecords(
         sku_code: skuCode,
         sku_name: firstSkuRow.sku_name || null,
         expected_qty: totalExpectedQty,
-        outbound_qty: 0,
+        outbound_qty: totalOutboundQty,
         inbound_qty: 0,
         shelf_qty: 0,
       });
@@ -601,17 +619,7 @@ async function mergeSubRecords(
   await batchInsert(trx, 'transfer_order_items', newOrderItems);
   await batchUpdateGrouped(trx, 'transfer_order_items', itemUpdateList);
 
-  const allCartons = await trx('transfer_cartons').where({ transfer_no: transferNo });
-  const allItems = await trx('transfer_order_items').where({ transfer_no: transferNo });
-  const totalQty = allItems.reduce((sum: number, item: any) => sum + (Number(item.expected_qty) || 0), 0);
-  const skuSet = new Set(allItems.map((i: any) => i.sku_code));
-
-  await trx('transfer_orders').where({ transfer_no: transferNo }).update({
-    total_sku_count: skuSet.size,
-    total_qty: totalQty,
-    total_carton_count: allCartons.length,
-    update_time: new Date().toISOString(),
-  });
+  await recalcOrderStats(trx, transferNo);
 }
 
 export async function importExcel(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
@@ -633,9 +641,8 @@ export async function importExcel(buffer: ArrayBuffer, operator: string): Promis
   const validRows: ParsedRow[] = [];
 
   for (const row of parsedRows) {
-    const err = validateRow(row);
-    if (err) {
-      errors.push({ row: row._rowIndex, message: err });
+    if (!hasValue(row.inbound_order_no)) {
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号' });
     } else {
       validRows.push(row);
     }
@@ -643,7 +650,7 @@ export async function importExcel(buffer: ArrayBuffer, operator: string): Promis
 
   const orderGroups: Record<string, ParsedRow[]> = {};
   for (const row of validRows) {
-    const key = row.inbound_order_no;
+    const key = String(row.inbound_order_no);
     if (!orderGroups[key]) orderGroups[key] = [];
     orderGroups[key].push(row);
   }
@@ -683,7 +690,7 @@ export async function importExcel(buffer: ArrayBuffer, operator: string): Promis
 }
 
 function parseExcelDate(value: any): string | undefined {
-  if (value === undefined || value === null || value === '') return undefined;
+  if (!hasValue(value)) return undefined;
   if (typeof value === 'number') {
     const date = XLSX.SSF.parse_date_code(value);
     if (date) {
@@ -697,19 +704,6 @@ function parseExcelDate(value: any): string | undefined {
     if (!isNaN(d.getTime())) return d.toISOString();
   }
   return undefined;
-}
-
-function mapRowsWithColumnMap(headers: string[], rows: any[][], columnMap: Record<string, string>): ParsedRow[] {
-  const fieldHeaders = headers.map((h) => columnMap[h] || h);
-  return rows.map((row, idx) => {
-    const mapped: ParsedRow = { _rowIndex: idx + 2 };
-    fieldHeaders.forEach((field, colIdx) => {
-      if (field) {
-        mapped[field] = row[colIdx];
-      }
-    });
-    return mapped;
-  });
 }
 
 export async function importOutboundReturn(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
@@ -1071,7 +1065,7 @@ export async function importLogisticsInfo(buffer: ArrayBuffer, operator: string)
         const orderUpdates: Record<string, any> = { update_time: new Date().toISOString() };
 
         for (const field of LOGISTICS_FIELDS) {
-          if (firstRow[field] !== undefined && firstRow[field] !== null && firstRow[field] !== '') {
+          if (hasValue(firstRow[field])) {
             if (field === 'is_customs_declared' || field === 'is_inspected') {
               orderUpdates[field] = BOOLEAN_MAP[String(firstRow[field])] ?? firstRow[field];
             } else if (field.endsWith('_time')) {
@@ -1345,7 +1339,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
         const orderUpdates: Record<string, any> = { update_time: new Date().toISOString() };
 
         for (const field of LOGISTICS_FIELDS) {
-          if (firstRow[field] !== undefined && firstRow[field] !== null && firstRow[field] !== '') {
+          if (hasValue(firstRow[field])) {
             if (field === 'is_customs_declared' || field === 'is_inspected') {
               orderUpdates[field] = BOOLEAN_MAP[String(firstRow[field])] ?? firstRow[field];
             } else if (field.endsWith('_time')) {
@@ -1390,16 +1384,11 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
           if (isTargeted) {
             const targetRows = groupRows.filter((r) => String(r.carton_no) === ctn.carton_no);
             const specRow = targetRows[0];
-            if (specRow.carton_length !== undefined && specRow.carton_length !== null && specRow.carton_length !== '')
-              ctnUpdates.carton_length = Number(specRow.carton_length);
-            if (specRow.carton_width !== undefined && specRow.carton_width !== null && specRow.carton_width !== '')
-              ctnUpdates.carton_width = Number(specRow.carton_width);
-            if (specRow.carton_height !== undefined && specRow.carton_height !== null && specRow.carton_height !== '')
-              ctnUpdates.carton_height = Number(specRow.carton_height);
-            if (specRow.carton_weight !== undefined && specRow.carton_weight !== null && specRow.carton_weight !== '')
-              ctnUpdates.carton_weight = Number(specRow.carton_weight);
-            if (specRow.declared_value !== undefined && specRow.declared_value !== null && specRow.declared_value !== '')
-              ctnUpdates.declared_value = Number(specRow.declared_value);
+            if (hasValue(specRow.carton_length)) ctnUpdates.carton_length = Number(specRow.carton_length);
+            if (hasValue(specRow.carton_width)) ctnUpdates.carton_width = Number(specRow.carton_width);
+            if (hasValue(specRow.carton_height)) ctnUpdates.carton_height = Number(specRow.carton_height);
+            if (hasValue(specRow.carton_weight)) ctnUpdates.carton_weight = Number(specRow.carton_weight);
+            if (hasValue(specRow.declared_value)) ctnUpdates.declared_value = Number(specRow.declared_value);
           }
 
           Object.assign(ctnUpdates, computeCartonTimeStats(ctn, orderUpdates));
@@ -1516,11 +1505,11 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
 
         const existingBill = billMap.get(order.transfer_no);
 
-        const freightFee = row.freight_fee !== undefined && row.freight_fee !== null && row.freight_fee !== '' ? Number(row.freight_fee) : undefined;
-        const customsFee = row.customs_fee !== undefined && row.customs_fee !== null && row.customs_fee !== '' ? Number(row.customs_fee) : undefined;
-        const otherFee = row.other_fee !== undefined && row.other_fee !== null && row.other_fee !== '' ? Number(row.other_fee) : undefined;
-        const currency = row.currency !== undefined && row.currency !== null && row.currency !== '' ? String(row.currency) : undefined;
-        const exchangeRate = row.exchange_rate !== undefined && row.exchange_rate !== null && row.exchange_rate !== '' ? Number(row.exchange_rate) : undefined;
+        const freightFee = hasValue(row.freight_fee) ? Number(row.freight_fee) : undefined;
+        const customsFee = hasValue(row.customs_fee) ? Number(row.customs_fee) : undefined;
+        const otherFee = hasValue(row.other_fee) ? Number(row.other_fee) : undefined;
+        const currency = hasValue(row.currency) ? String(row.currency) : undefined;
+        const exchangeRate = hasValue(row.exchange_rate) ? Number(row.exchange_rate) : undefined;
 
         if (existingBill) {
           const updates: Record<string, any> = { update_time: new Date().toISOString() };
@@ -1633,11 +1622,10 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
 export function generateTemplate(type: string): ArrayBuffer {
   const headersByType: Record<string, string[]> = {
     main: [
-      '第三方入库单号', '创建时间', '出库时间', 'ERP订单号', '出库单号', '发货仓', '目的仓', '团队',
-      '来源', '调拨类型', '运输类型', '箱号', '物流跟踪号', '物流商',
-      'SKU代码', 'SKU名称', '海外仓SKU', '品名', '应调拨数量',
-      '是否报关', '报关工厂', '是否查验', '时效要求天数', '订单备注',
-      '末程类型', '末程渠道', '预估单价', '运费币种', '运费分摊方式', '备注',
+      '第三方入库单号', '调拨单号', '出库单号', '创建时间', '发货仓', '目的仓', '团队',
+      '箱号（赫特）', '赫特SKU', '赫特产品名称', '品名', '第三方SKU', '计划数量',
+      '是否报关', '报关工厂', '时效要求', '运输类型', '物流商', '提货时间',
+      '箱号', '实发数量', '箱规码', '长', '宽', '高', '申报货值', '仓库实重', '渠道实重', '单价', '备注',
     ],
     logistics: [
       '第三方入库单号', '物流商', '物流跟踪号', '收件时间', '离港时间', '到港时间', '清关时间', '尾程提取时间', '签收时间', '卸货时间', '上架时间', '是否报关', '报关工厂', '是否查验', '尾程类型', '尾程渠道', '事件时间', '事件类型', '事件描述', '位置',
