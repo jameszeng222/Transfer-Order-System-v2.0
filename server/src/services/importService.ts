@@ -692,11 +692,10 @@ export async function importExcel(buffer: ArrayBuffer, operator: string): Promis
 function parseExcelDate(value: any): string | undefined {
   if (!hasValue(value)) return undefined;
   if (typeof value === 'number') {
-    const date = XLSX.SSF.parse_date_code(value);
-    if (date) {
-      const d = new Date(date.y, date.m - 1, date.d, date.H || 0, date.M || 0, date.S || 0);
-      return d.toISOString();
-    }
+    const epoch = new Date(Date.UTC(1899, 11, 30));
+    const ms = epoch.getTime() + value * 86400000;
+    const d = new Date(ms);
+    if (!isNaN(d.getTime())) return d.toISOString();
     return undefined;
   }
   if (typeof value === 'string') {
