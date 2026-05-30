@@ -52,7 +52,7 @@ const LOGISTICS_EVENT_TYPE_MAP: Record<string, string> = {
   '清关完成': 'CLEARED',
   '已提柜': 'PICKED_UP',
   '派送中': 'DELIVERING',
-  '已到仓': 'SIGNED',
+  '已签收': 'SIGNED',
   '异常': 'ABNORMAL',
 };
 

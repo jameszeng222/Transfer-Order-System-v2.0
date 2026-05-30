@@ -11,13 +11,6 @@ export type TransferStatus = (typeof TransferStatus)[keyof typeof TransferStatus
 export declare const TransferStatusLabel: Record<TransferStatus, string>;
 export type BadgeVariant = 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'complete';
 export declare const StatusBadgeMap: Record<TransferStatus, BadgeVariant>;
-export declare const TransferSource: {
-    readonly API_WANYITONG: "API_WANYITONG";
-    readonly API_AMAZON: "API_AMAZON";
-    readonly MANUAL: "MANUAL";
-    readonly OTHER: "OTHER";
-};
-export type TransferSource = (typeof TransferSource)[keyof typeof TransferSource];
 export declare const TransferType: {
     readonly DOMESTIC_TO_OVERSEAS: "DOMESTIC_TO_OVERSEAS";
     readonly OVERSEAS_TO_OVERSEAS: "OVERSEAS_TO_OVERSEAS";

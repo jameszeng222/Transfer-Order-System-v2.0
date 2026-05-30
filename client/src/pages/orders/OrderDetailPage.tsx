@@ -14,8 +14,8 @@ interface TrackingEvent { id: number; event_time: string; event_type: string; ev
 interface ChangeLog { id: number; record_type: string; record_id: number; field_name: string; old_value: string; new_value: string; change_source: string; operator: string; change_time: string; reason: string; }
 
 interface OrderDetail {
-  id: number; transfer_no: string; erp_order_no: string; outbound_order_no: string; inbound_order_no: string;
-  from_warehouse: string; to_warehouse: string; team: string; source: string; transfer_type: string;
+  id: number; transfer_no: string; outbound_order_no: string; inbound_order_no: string;
+  from_warehouse: string; to_warehouse: string; team: string; transfer_type: string;
   status: TransferStatus; transport_type: TransportType; total_sku_count: number; total_qty: number;
   total_carton_count: number; logistics_status: string; expected_arrival_date: string; actual_arrival_date: string;
   expected_shelf_date: string; logistics_carrier: string; logistics_tracking_no: string;
@@ -319,7 +319,6 @@ export default function OrderDetailPage() {
         { label: '第三方入库单号', value: order.inbound_order_no || '--' },
         { label: '调拨单号', value: order.transfer_no },
         { label: '出库单号', value: order.outbound_order_no || '--' },
-        { label: 'ERP订单号', value: order.erp_order_no || '--' },
         { label: '创建时间', value: order.create_time ? new Date(order.create_time).toLocaleString('zh-CN') : '--' },
         { label: '出库时间', value: order.departure_time ? new Date(order.departure_time).toLocaleString('zh-CN') : '--' },
       ],
@@ -330,7 +329,6 @@ export default function OrderDetailPage() {
         { label: '发货仓', value: order.from_warehouse },
         { label: '目的仓', value: order.to_warehouse },
         { label: '团队', value: order.team || '--' },
-        { label: '来源', value: order.source || '--' },
       ],
     },
     {
@@ -434,7 +432,7 @@ export default function OrderDetailPage() {
 
   const getCartonStatusLabel = (ct: Carton): string => {
     if (ct.shelf_time) return '已上架';
-    if (ct.logistics_sign_time) return '已到仓';
+    if (ct.logistics_sign_time) return '已签收';
     if (ct.is_shelf_abnormal) return '上架异常';
     return '在途';
   };

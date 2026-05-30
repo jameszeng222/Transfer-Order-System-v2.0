@@ -32,15 +32,6 @@ export const StatusBadgeMap: Record<TransferStatus, BadgeVariant> = {
   CANCELLED: 'abnormal',
 };
 
-export const TransferSource = {
-  API_WANYITONG: 'API_WANYITONG',
-  API_AMAZON: 'API_AMAZON',
-  MANUAL: 'MANUAL',
-  OTHER: 'OTHER',
-} as const;
-
-export type TransferSource = (typeof TransferSource)[keyof typeof TransferSource];
-
 export const TransferType = {
   DOMESTIC_TO_OVERSEAS: 'DOMESTIC_TO_OVERSEAS',
   OVERSEAS_TO_OVERSEAS: 'OVERSEAS_TO_OVERSEAS',

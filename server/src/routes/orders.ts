@@ -122,7 +122,6 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const fromWarehouse = c.req.query('from_warehouse');
   const toWarehouse = c.req.query('to_warehouse');
   const transportType = c.req.query('transport_type');
-  const source = c.req.query('source');
   const isLogisticsAbnormal = c.req.query('is_logistics_abnormal');
   const isShelfAbnormal = c.req.query('is_shelf_abnormal');
   const abnormal = c.req.query('abnormal');
@@ -150,9 +149,6 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   }
   if (transportType) {
     query = query.where('transport_type', transportType);
-  }
-  if (source) {
-    query = query.where('source', source);
   }
   if (isLogisticsAbnormal !== undefined && isLogisticsAbnormal !== '') {
     query = query.where('is_logistics_abnormal', isLogisticsAbnormal === 'true' ? 1 : 0);
@@ -249,7 +245,6 @@ orders.get('/export', async (c) => {
   const fromWarehouse = c.req.query('from_warehouse');
   const toWarehouse = c.req.query('to_warehouse');
   const transportType = c.req.query('transport_type');
-  const source = c.req.query('source');
   const isLogisticsAbnormal = c.req.query('is_logistics_abnormal');
   const isShelfAbnormal = c.req.query('is_shelf_abnormal');
   const isReconciled = c.req.query('is_reconciled');
@@ -276,9 +271,6 @@ orders.get('/export', async (c) => {
   }
   if (transportType) {
     query = query.where('transport_type', transportType);
-  }
-  if (source) {
-    query = query.where('source', source);
   }
   if (isLogisticsAbnormal !== undefined && isLogisticsAbnormal !== '') {
     query = query.where('is_logistics_abnormal', isLogisticsAbnormal === 'true' ? 1 : 0);

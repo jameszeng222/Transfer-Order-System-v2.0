@@ -25,12 +25,6 @@ export const StatusBadgeMap = {
     COMPLETED: 'complete',
     CANCELLED: 'abnormal',
 };
-export const TransferSource = {
-    API_WANYITONG: 'API_WANYITONG',
-    API_AMAZON: 'API_AMAZON',
-    MANUAL: 'MANUAL',
-    OTHER: 'OTHER',
-};
 export const TransferType = {
     DOMESTIC_TO_OVERSEAS: 'DOMESTIC_TO_OVERSEAS',
     OVERSEAS_TO_OVERSEAS: 'OVERSEAS_TO_OVERSEAS',

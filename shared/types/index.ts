@@ -1,6 +1,5 @@
 export type {
   TransferStatus,
-  TransferSource,
   TransferType,
   TransportType,
   WarehouseType,

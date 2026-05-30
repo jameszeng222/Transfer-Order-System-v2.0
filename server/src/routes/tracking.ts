@@ -65,7 +65,7 @@ function computeRemainingDays(pickupTime: string | null, slaDays: number): numbe
 
 function computeLatestEvent(row: any): string {
   const nodes: [string, string][] = [
-    ['已到仓', row.logistics_sign_time],
+    ['已签收', row.logistics_sign_time],
     ['尾程提取', row.last_mile_pickup_time],
     ['已清关', row.customs_clearance_time],
     ['已到港', row.arrival_port_time],
