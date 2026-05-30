@@ -13,7 +13,6 @@ interface OrderRow {
   from_warehouse: string;
   to_warehouse: string;
   team: string;
-  source: string;
   status: TransferStatus;
   transport_type: TransportType;
   total_sku_count: number;
@@ -41,13 +40,6 @@ const STATUS_OPTIONS: TransferStatus[] = [
   'PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED', 'COMPLETED', 'CANCELLED',
 ];
 
-const SOURCE_OPTIONS = [
-  { label: '万邑通API', value: 'API_WANYITONG' },
-  { label: '亚马逊', value: 'API_AMAZON' },
-  { label: '手工创建', value: 'MANUAL' },
-  { label: '其他', value: 'OTHER' },
-];
-
 const ABNORMAL_OPTIONS = [
   { label: '仅物流异常', value: 'logistics' },
   { label: '仅上架异常', value: 'shelf' },
@@ -59,7 +51,6 @@ const DEFAULT_FILTERS = {
   status: '',
   from_warehouse: '',
   to_warehouse: '',
-  source: '',
   team: '',
   abnormal: '',
   logistics_carrier: '',
@@ -107,6 +98,7 @@ export default function OrderListPage() {
   const [timeFilters, setTimeFilters] = useState({ ...DEFAULT_TIME_FILTERS });
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<{ success: boolean; data: Warehouse[] }>('/warehouses?pageSize=100')
@@ -134,7 +126,6 @@ export default function OrderListPage() {
     if (filters.status) params.set('status', filters.status);
     if (filters.from_warehouse) params.set('from_warehouse', filters.from_warehouse);
     if (filters.to_warehouse) params.set('to_warehouse', filters.to_warehouse);
-    if (filters.source) params.set('source', filters.source);
     if (filters.team) params.set('team', filters.team);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
     if (filters.logistics_carrier) params.set('logistics_carrier', filters.logistics_carrier);
@@ -196,7 +187,6 @@ export default function OrderListPage() {
     if (filters.status) params.set('status', filters.status);
     if (filters.from_warehouse) params.set('from_warehouse', filters.from_warehouse);
     if (filters.to_warehouse) params.set('to_warehouse', filters.to_warehouse);
-    if (filters.source) params.set('source', filters.source);
     if (filters.team) params.set('team', filters.team);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
     if (selectedKeys.size > 0) params.set('transfer_nos', Array.from(selectedKeys).join(','));
@@ -267,15 +257,9 @@ export default function OrderListPage() {
     },
     { key: 'transfer_no', title: '调拨单号' },
     {
-      key: 'source',
-      title: '来源',
-      render: (_, row) => {
-        const src = row.source as string;
-        if (src === 'API_WANYITONG') return <Badge variant="shipped">万邑通</Badge>;
-        if (src === 'API_AMAZON') return <Badge variant="received">亚马逊</Badge>;
-        if (src === 'MANUAL') return <Badge variant="pending">手工</Badge>;
-        return <Badge variant="pending">{src || '--'}</Badge>;
-      },
+      key: 'logistics_carrier',
+      title: '物流商',
+      render: (_, row) => (row.logistics_carrier as string) || '--',
     },
     { key: 'from_warehouse', title: '发货仓' },
     { key: 'to_warehouse', title: '目的仓' },
@@ -352,16 +336,23 @@ export default function OrderListPage() {
         const status = row.status as TransferStatus;
         const allowedNext = STATUS_FLOW[status] || [];
         if (allowedNext.length === 0) return null;
+        const key = row.transfer_no as string;
+        const isOpen = openMenuKey === key;
         return (
-          <div className="relative group">
-            <button className="text-xs text-accent hover:text-accent-hover">操作 ▾</button>
-            <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-lg py-1 z-10 hidden group-hover:block min-w-[100px]">
-              {allowedNext.map(s => (
-                <button key={s} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover" onClick={() => handleStatusChange(row.transfer_no as string, s as TransferStatus)}>
-                  {NEXT_STATUS_LABELS[s] || s}
-                </button>
-              ))}
-            </div>
+          <div className="relative">
+            <button className="text-xs text-accent hover:text-accent-hover" onClick={() => setOpenMenuKey(isOpen ? null : key)}>操作 ▾</button>
+            {isOpen && (
+              <>
+                <div className="fixed inset-0 z-[5]" onClick={() => setOpenMenuKey(null)} />
+                <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-lg py-1 z-10 min-w-[100px]">
+                  {allowedNext.map(s => (
+                    <button key={s} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover" onClick={() => { setOpenMenuKey(null); handleStatusChange(row.transfer_no as string, s as TransferStatus); }}>
+                      {NEXT_STATUS_LABELS[s] || s}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         );
       },
@@ -410,15 +401,6 @@ export default function OrderListPage() {
             placeholder="全部目的仓"
             options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_name }))}
             className="w-[140px]"
-          />
-          <FormField
-            name="source"
-            type="select"
-            value={filters.source}
-            onChange={handleFilterChange}
-            placeholder="全部来源"
-            options={SOURCE_OPTIONS}
-            className="w-[130px]"
           />
           <FormField
             name="team"

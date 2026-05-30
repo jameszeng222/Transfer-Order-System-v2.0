@@ -740,4 +740,22 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
   return c.json({ success: true, data: updated, conflicts: conflictEntries });
 });
 
+orders.delete('/purge', async (c) => {
+  if (!await requirePermission(c, 'settings.manage')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
+  try {
+    await db('tracking_events').del();
+    await db('discrepancy_records').del();
+    await db('change_logs').del();
+    await db('transfer_carton_items').del();
+    await db('transfer_cartons').del();
+    await db('transfer_order_items').del();
+    await db('transfer_orders').del();
+    return c.json({ success: true, message: '所有调拨单数据已清除' });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
 export default orders;

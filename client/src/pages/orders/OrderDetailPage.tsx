@@ -485,18 +485,21 @@ export default function OrderDetailPage() {
             {timelineData.map((node, idx) => {
               const isNextNode = idx === currentIdx + 1;
               const canTriggerStatus = NODE_STATUS_MAP[node.timeField] && !node.hasTime && isNextNode;
+              const canEdit = !node.hasTime;
               return (
                 <div key={node.key} className="flex items-center">
                   <div
-                    className={`flex flex-col items-center min-w-[72px] ${canTriggerStatus ? 'cursor-pointer' : node.hasTime ? 'cursor-pointer group' : ''}`}
+                    className={`flex flex-col items-center min-w-[72px] ${canTriggerStatus ? 'cursor-pointer' : canEdit ? 'cursor-pointer' : node.hasTime ? 'cursor-pointer group' : ''}`}
                     onClick={() => {
                       if (canTriggerStatus) {
                         handleNodeStatusChange(node.timeField);
+                      } else if (canEdit) {
+                        openNodeEdit(node.timeField, '');
                       } else if (node.hasTime) {
                         openNodeEdit(node.timeField, order[node.timeField] || '');
                       }
                     }}
-                    title={canTriggerStatus ? '点击确认到达此节点' : node.hasTime ? '点击编辑时间' : undefined}
+                    title={canTriggerStatus ? '点击确认到达此节点' : canEdit ? '点击填写时间' : node.hasTime ? '点击编辑时间' : undefined}
                   >
                     <div className={`w-2.5 h-2.5 rounded-full mb-1.5 z-[2] ${
                       idx < currentIdx ? 'bg-green' :
@@ -508,9 +511,10 @@ export default function OrderDetailPage() {
                     <div className={`text-[10px] mt-0.5 ${
                       node.hasTime ? 'text-text-tertiary group-hover:text-accent transition-colors' :
                       canTriggerStatus ? 'text-accent font-medium' :
+                      canEdit ? 'text-accent/60' :
                       'text-text-tertiary'
                     }`}>
-                      {node.hasTime ? node.time : canTriggerStatus ? '确认到达' : '—'}
+                      {node.hasTime ? node.time : canTriggerStatus ? '确认到达' : canEdit ? '填写' : '—'}
                     </div>
                   </div>
                   {idx < timelineData.length - 1 && (

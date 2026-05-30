@@ -22,15 +22,12 @@ interface InTransitRow {
   id: number;
   transfer_no: string;
   inbound_order_no: string;
-  carton_no: string;
-  system_sku: string;
-  overseas_sku: string;
-  qty: number;
   from_warehouse: string;
   to_warehouse: string;
   transport_type: TransportType;
   logistics_carrier: string;
   logistics_tracking_no: string;
+  timeline_requirement_days: number;
   sla_days: number;
   pickup_time: string;
   expected_arrival: string;
@@ -39,6 +36,7 @@ interface InTransitRow {
   is_logistics_abnormal: number;
   logistics_abnormal_type: string;
   latest_event: string;
+  carton_items: { carton_no: string; system_sku: string; overseas_sku: string; qty: number; outbound_qty: number }[];
 }
 
 interface Warehouse {
@@ -249,20 +247,35 @@ export default function TrackingPage() {
       render: (_, row) => <span>{(row.inbound_order_no as string) || '--'}</span>,
     },
     {
-      key: 'inbound_carton',
-      title: '入库单+箱号',
-      render: (_, row) => (
-        <div>
-          <span className="text-text-secondary">{(row.inbound_order_no as string) || '--'}</span>
-          {(row.carton_no as string) && (
-            <div className="text-[11px] text-text-tertiary">{row.carton_no as string}</div>
-          )}
-        </div>
-      ),
+      key: 'system_sku',
+      title: '系统SKU',
+      render: (_, row) => {
+        const items = row.carton_items as InTransitRow['carton_items'];
+        if (!items || items.length === 0) return '--';
+        const skus = [...new Set(items.map(i => i.system_sku).filter(Boolean))];
+        return <span className="text-xs">{skus.join(', ')}</span>;
+      },
     },
-    { key: 'system_sku', title: '系统SKU', render: (_, row) => (row.system_sku as string) || '--' },
-    { key: 'overseas_sku', title: '海外仓SKU', render: (_, row) => (row.overseas_sku as string) || '--' },
-    { key: 'qty', title: '数量' },
+    {
+      key: 'overseas_sku',
+      title: '海外仓SKU',
+      render: (_, row) => {
+        const items = row.carton_items as InTransitRow['carton_items'];
+        if (!items || items.length === 0) return '--';
+        const skus = [...new Set(items.map(i => i.overseas_sku).filter(Boolean))];
+        return <span className="text-xs">{skus.join(', ')}</span>;
+      },
+    },
+    {
+      key: 'outbound_qty',
+      title: '实发数量',
+      render: (_, row) => {
+        const items = row.carton_items as InTransitRow['carton_items'];
+        if (!items || items.length === 0) return '--';
+        const total = items.reduce((sum, i) => sum + (i.outbound_qty || i.qty || 0), 0);
+        return <span>{total}</span>;
+      },
+    },
     { key: 'from_warehouse', title: '发货仓' },
     { key: 'to_warehouse', title: '目的仓' },
     {

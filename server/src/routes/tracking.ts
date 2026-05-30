@@ -156,7 +156,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
     .limit(pageSize);
 
   const enriched = data.map((row: any) => {
-    const slaDays = computeSlaDays(row.to_warehouse, row.transport_type, slaRules, warehouseIdMap);
+    const slaDays = row.timeline_requirement_days || computeSlaDays(row.to_warehouse, row.transport_type, slaRules, warehouseIdMap);
     const remainingDays = computeRemainingDays(row.pickup_time, slaDays);
     const expectedArrival = row.pickup_time
       ? new Date(new Date(row.pickup_time).getTime() + slaDays * 24 * 60 * 60 * 1000).toISOString()
@@ -170,6 +170,35 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       is_timeout: timeout,
     };
   });
+
+  const orderIds = enriched.map((r: any) => r.id);
+  let cartonItems: any[] = [];
+  if (orderIds.length > 0) {
+    cartonItems = await db('transfer_carton_items as ci')
+      .leftJoin('transfer_cartons as ct', 'ci.carton_id', 'ct.id')
+      .leftJoin('transfer_order_items as oi', function () {
+        this.on('oi.transfer_no', 'ct.transfer_no').andOn('oi.sku_code', 'ci.sku_code');
+      })
+      .whereIn('ct.order_id', orderIds)
+      .select([
+        'ct.order_id',
+        'ct.carton_no',
+        'ci.sku_code as system_sku',
+        'ci.overseas_sku_code as overseas_sku',
+        'ci.qty',
+        'oi.outbound_qty',
+      ]);
+  }
+
+  const itemsByOrder: Record<number, any[]> = {};
+  for (const ci of cartonItems) {
+    if (!itemsByOrder[ci.order_id]) itemsByOrder[ci.order_id] = [];
+    itemsByOrder[ci.order_id].push(ci);
+  }
+
+  for (const row of enriched) {
+    row.carton_items = itemsByOrder[row.id] || [];
+  }
 
   const filtered = isTimeout !== undefined && isTimeout !== ''
     ? enriched.filter((row: any) => {
