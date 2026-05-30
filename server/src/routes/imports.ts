@@ -11,7 +11,7 @@ import {
 
 const imports = new Hono();
 
-async function parseUploadFile(c: any): Promise<{ buffer: ArrayBuffer; operator: string } | Response> {
+async function parseUploadFile(c: any): Promise<{ buffer: ArrayBuffer; operator: string; filename: string } | Response> {
   const hasPermission = await requirePermission(c, 'import.execute');
   if (!hasPermission) {
     return c.json({ success: false, error: 'Forbidden: missing import.execute permission' }, 403);
@@ -32,7 +32,7 @@ async function parseUploadFile(c: any): Promise<{ buffer: ArrayBuffer; operator:
     const buffer = Buffer.from(data, 'base64').buffer as ArrayBuffer;
     const user = c.get('user');
     const operator = user?.username || 'unknown';
-    return { buffer, operator };
+    return { buffer, operator, filename: fname };
   }
 
   const body = await c.req.parseBody();
@@ -54,15 +54,27 @@ async function parseUploadFile(c: any): Promise<{ buffer: ArrayBuffer; operator:
   const user = c.get('user');
   const operator = user?.username || 'unknown';
 
-  return { buffer, operator };
+  return { buffer, operator, filename: file.name };
 }
 
 imports.post('/upload', async (c) => {
   try {
     const parsed = await parseUploadFile(c);
     if (parsed instanceof Response) return parsed;
-    const { buffer, operator } = parsed;
+    const { buffer, operator, filename } = parsed;
     const result = await importExcel(buffer, operator);
+    await db('change_logs').insert({
+      record_type: 'import_history',
+      record_id: 0,
+      transfer_no: '',
+      field_name: result.createdOrders > 0 ? 'IMPORT_CREATE' : 'IMPORT_OVERWRITE',
+      old_value: filename,
+      new_value: `${result.success}/${result.failed}`,
+      change_source: 'IMPORT',
+      operator,
+      change_time: new Date().toISOString(),
+      reason: `调拨单导入: 新建${result.createdOrders}/更新${result.updatedOrders}`,
+    });
     return c.json({ success: true, data: result });
   } catch (err: any) {
     console.error('[import/upload] Error:', err?.message || err);
@@ -74,8 +86,20 @@ imports.post('/inbound', async (c) => {
   try {
     const parsed = await parseUploadFile(c);
     if (parsed instanceof Response) return parsed;
-    const { buffer, operator } = parsed;
+    const { buffer, operator, filename } = parsed;
     const result = await importInboundReturn(buffer, operator);
+    await db('change_logs').insert({
+      record_type: 'import_history',
+      record_id: 0,
+      transfer_no: '',
+      field_name: 'IMPORT_INBOUND',
+      old_value: filename,
+      new_value: `${result.success}/${result.failed}`,
+      change_source: 'IMPORT',
+      operator,
+      change_time: new Date().toISOString(),
+      reason: `入库回传导入: 成功${result.success}/失败${result.failed}`,
+    });
     return c.json({ success: true, data: result });
   } catch (err: any) {
     console.error('[import/inbound] Error:', err?.message || err);
@@ -87,8 +111,20 @@ imports.post('/logistics', async (c) => {
   try {
     const parsed = await parseUploadFile(c);
     if (parsed instanceof Response) return parsed;
-    const { buffer, operator } = parsed;
+    const { buffer, operator, filename } = parsed;
     const result = await importLogisticsMerged(buffer, operator);
+    await db('change_logs').insert({
+      record_type: 'import_history',
+      record_id: 0,
+      transfer_no: '',
+      field_name: 'IMPORT_LOGISTICS_MERGED',
+      old_value: filename,
+      new_value: `${result.success}/${result.failed}`,
+      change_source: 'IMPORT',
+      operator,
+      change_time: new Date().toISOString(),
+      reason: `物流信息导入: 成功${result.success}/失败${result.failed}`,
+    });
     return c.json({ success: true, data: result });
   } catch (err: any) {
     console.error('[import/logistics] Error:', err?.message || err);
@@ -100,8 +136,20 @@ imports.post('/freight', async (c) => {
   try {
     const parsed = await parseUploadFile(c);
     if (parsed instanceof Response) return parsed;
-    const { buffer, operator } = parsed;
+    const { buffer, operator, filename } = parsed;
     const result = await processFreightImport(buffer, operator);
+    await db('change_logs').insert({
+      record_type: 'import_history',
+      record_id: 0,
+      transfer_no: '',
+      field_name: 'IMPORT_FREIGHT',
+      old_value: filename,
+      new_value: `${result.success}/${result.failed}`,
+      change_source: 'IMPORT',
+      operator,
+      change_time: new Date().toISOString(),
+      reason: `运费账单导入: 成功${result.success}/失败${result.failed}`,
+    });
     return c.json({ success: true, data: result });
   } catch (err: any) {
     console.error('[import/freight] Error:', err?.message || err);
@@ -143,22 +191,39 @@ imports.get('/history', async (c) => {
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 20;
 
-  const query = db('change_logs')
+  const data = await db('change_logs')
     .where('change_source', 'IMPORT')
-    .whereIn('field_name', ['IMPORT_CREATE', 'IMPORT_OVERWRITE', 'IMPORT_OUTBOUND', 'IMPORT_INBOUND', 'IMPORT_LOGISTICS', 'IMPORT_LOGISTICS_EVENTS', 'IMPORT_LOGISTICS_MERGED', 'IMPORT_FREIGHT']);
-
-  const totalResult = await query.clone().count('* as count').first();
-  const total = Number(totalResult?.count || 0);
-
-  const data = await query
-    .clone()
+    .whereIn('field_name', ['IMPORT_CREATE', 'IMPORT_OVERWRITE', 'IMPORT_INBOUND', 'IMPORT_LOGISTICS_MERGED', 'IMPORT_FREIGHT'])
     .orderBy('change_time', 'desc')
     .offset((page - 1) * pageSize)
     .limit(pageSize);
 
+  const totalResult = await db('change_logs')
+    .where('change_source', 'IMPORT')
+    .whereIn('field_name', ['IMPORT_CREATE', 'IMPORT_OVERWRITE', 'IMPORT_INBOUND', 'IMPORT_LOGISTICS_MERGED', 'IMPORT_FREIGHT'])
+    .count('* as count').first();
+  const total = Number(totalResult?.count || 0);
+
+  const TYPE_LABELS: Record<string, string> = {
+    IMPORT_CREATE: '调拨单导入',
+    IMPORT_OVERWRITE: '调拨单覆盖',
+    IMPORT_INBOUND: '入库回传',
+    IMPORT_LOGISTICS_MERGED: '物流信息导入',
+    IMPORT_FREIGHT: '运费账单导入',
+  };
+
+  const history = data.map((row: any) => ({
+    time: row.change_time ? new Date(row.change_time).toLocaleString('zh-CN') : '--',
+    type: TYPE_LABELS[row.field_name] || row.field_name,
+    filename: row.old_value || '--',
+    success: parseInt(String(row.new_value || '0').split('/')[0]) || 0,
+    failed: parseInt(String(row.new_value || '0').split('/')[1]) || 0,
+    operator: row.operator || '--',
+  }));
+
   return c.json({
     success: true,
-    data,
+    data: history,
     pagination: { total, page, pageSize },
   });
 });

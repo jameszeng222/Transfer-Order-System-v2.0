@@ -1,0 +1,20 @@
+import { UserRole } from './index';
+export declare const Permission: {
+    readonly ORDER_VIEW: "order.view";
+    readonly ORDER_IMPORT: "order.import";
+    readonly ORDER_EDIT: "order.edit";
+    readonly ORDER_CONFIRM: "order.confirm";
+    readonly TRACKING_VIEW: "tracking.view";
+    readonly TRACKING_EXPORT: "tracking.export";
+    readonly FREIGHT_VIEW: "freight.view";
+    readonly FREIGHT_CONFIRM: "freight.confirm";
+    readonly FREIGHT_RECONCILE: "freight.reconcile";
+    readonly DISCREPANCY_VIEW: "discrepancy.view";
+    readonly DISCREPANCY_HANDLE: "discrepancy.handle";
+    readonly REPORTS_VIEW: "reports.view";
+    readonly SETTINGS_MANAGE: "settings.manage";
+    readonly IMPORT_EXECUTE: "import.execute";
+};
+export type Permission = (typeof Permission)[keyof typeof Permission];
+export declare const ALL_PERMISSIONS: Permission[];
+export declare const RolePermissions: Record<UserRole, Permission[]>;

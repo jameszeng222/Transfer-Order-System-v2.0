@@ -171,17 +171,19 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
     };
   });
 
-  const orderIds = enriched.map((r: any) => r.id);
+  const transferNos = enriched.map((r: any) => r.transfer_no);
   let cartonItems: any[] = [];
-  if (orderIds.length > 0) {
+  if (transferNos.length > 0) {
     cartonItems = await db('transfer_carton_items as ci')
-      .leftJoin('transfer_cartons as ct', 'ci.carton_id', 'ct.id')
-      .leftJoin('transfer_order_items as oi', function () {
-        this.on('oi.transfer_no', 'ct.transfer_no').andOn('oi.sku_code', 'ci.sku_code');
+      .leftJoin('transfer_cartons as ct', function () {
+        this.on('ci.carton_no', 'ct.carton_no').andOn('ci.transfer_no', 'ct.transfer_no');
       })
-      .whereIn('ct.order_id', orderIds)
+      .leftJoin('transfer_order_items as oi', function () {
+        this.on('oi.transfer_no', 'ci.transfer_no').andOn('oi.sku_code', 'ci.sku_code');
+      })
+      .whereIn('ci.transfer_no', transferNos)
       .select([
-        'ct.order_id',
+        'ci.transfer_no',
         'ct.carton_no',
         'ci.sku_code as system_sku',
         'ci.overseas_sku_code as overseas_sku',
@@ -190,14 +192,14 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       ]);
   }
 
-  const itemsByOrder: Record<number, any[]> = {};
+  const itemsByOrder: Record<string, any[]> = {};
   for (const ci of cartonItems) {
-    if (!itemsByOrder[ci.order_id]) itemsByOrder[ci.order_id] = [];
-    itemsByOrder[ci.order_id].push(ci);
+    if (!itemsByOrder[ci.transfer_no]) itemsByOrder[ci.transfer_no] = [];
+    itemsByOrder[ci.transfer_no].push(ci);
   }
 
   for (const row of enriched) {
-    row.carton_items = itemsByOrder[row.id] || [];
+    row.carton_items = itemsByOrder[row.transfer_no] || [];
   }
 
   const filtered = isTimeout !== undefined && isTimeout !== ''
