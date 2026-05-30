@@ -194,6 +194,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       'inbound_order_no',
       'from_warehouse',
       'to_warehouse',
+      'team',
       'status',
       'transport_type',
       'total_sku_count',

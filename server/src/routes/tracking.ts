@@ -63,6 +63,21 @@ function computeRemainingDays(pickupTime: string | null, slaDays: number): numbe
   return Math.ceil(diffMs / (24 * 60 * 60 * 1000));
 }
 
+function computeLatestEvent(row: any): string {
+  const nodes: [string, string][] = [
+    ['已签收', row.logistics_sign_time],
+    ['尾程提取', row.last_mile_pickup_time],
+    ['已清关', row.customs_clearance_time],
+    ['已到港', row.arrival_port_time],
+    ['已离港', row.departure_time],
+    ['已收件', row.pickup_time],
+  ];
+  for (const [label, time] of nodes) {
+    if (time) return label;
+  }
+  return '--';
+}
+
 tracking.get('/intransit', async (c) => {
   if (!await requirePermission(c, 'tracking.view')) {
     return c.json({ success: false, error: '无权限' }, 403);
@@ -168,6 +183,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       expected_arrival: expectedArrival,
       remaining_days: remainingDays,
       is_timeout: timeout,
+      latest_event: computeLatestEvent(row),
     };
   });
 
