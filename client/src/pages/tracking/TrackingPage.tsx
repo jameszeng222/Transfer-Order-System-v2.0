@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, ShieldCheck, Search, RotateCcw } from 'lucide-react';
 import { api, API_BASE } from '../../api/client';
-import { TransportTypeLabel } from 'shared/constants';
-import type { TransportType } from 'shared/constants';
+import { TransportTypeLabel, TransferStatusLabel } from 'shared/constants';
+import type { TransportType, TransferStatus } from 'shared/constants';
 import { StatCard, Card, FormField, Table, Pagination, Button, Badge, TimeFilterPanel } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
 
@@ -48,6 +48,10 @@ interface Warehouse {
 
 const TRANSPORT_OPTIONS: TransportType[] = ['SEA', 'AIR', 'RAIL', 'TRUCK', 'EXPRESS', 'FAST_SEA', 'SPECIAL'];
 
+const STATUS_OPTIONS: TransferStatus[] = [
+  'PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED', 'COMPLETED', 'CANCELLED',
+];
+
 const ABNORMAL_OPTIONS = [
   { label: '物流异常', value: 'logistics' },
   { label: '超时', value: 'timeout' },
@@ -55,6 +59,7 @@ const ABNORMAL_OPTIONS = [
 
 const DEFAULT_FILTERS = {
   keyword: '',
+  status: '',
   from_warehouse: '',
   to_warehouse: '',
   transport_type: '',
@@ -125,6 +130,7 @@ export default function TrackingPage() {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (filters.keyword) params.set('keyword', filters.keyword);
+    if (filters.status) params.set('status', filters.status);
     if (filters.from_warehouse) params.set('from_warehouse', filters.from_warehouse);
     if (filters.to_warehouse) params.set('to_warehouse', filters.to_warehouse);
     if (filters.transport_type) params.set('transport_type', filters.transport_type);
@@ -252,8 +258,10 @@ export default function TrackingPage() {
       title: '状态',
       render: (_, row) => {
         const s = row.status as string;
+        if (s === 'OUTBOUNDED') return <Badge variant="shipped">已出库</Badge>;
         if (s === 'IN_TRANSIT') return <Badge variant="transit">在途</Badge>;
         if (s === 'RECEIVED') return <Badge variant="received">已签收</Badge>;
+        if (s === 'SHELVED') return <Badge variant="shelved">已上架</Badge>;
         return <Badge variant="pending">{s}</Badge>;
       },
     },
@@ -369,6 +377,15 @@ export default function TrackingPage() {
             onChange={handleFilterChange}
             placeholder="搜索入库单号/箱号/SKU"
             className="w-[220px]"
+          />
+          <FormField
+            name="status"
+            type="select"
+            value={filters.status}
+            onChange={handleFilterChange}
+            placeholder="全部状态"
+            options={STATUS_OPTIONS.map((s) => ({ label: TransferStatusLabel[s], value: s }))}
+            className="w-[130px]"
           />
           <FormField
             name="from_warehouse"

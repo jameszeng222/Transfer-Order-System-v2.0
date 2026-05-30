@@ -92,8 +92,14 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const logisticsCarrier = c.req.query('logistics_carrier');
   const team = c.req.query('team');
   const abnormal = c.req.query('abnormal');
+  const statusFilter = c.req.query('status');
 
-  let query = db('transfer_orders').whereIn('status', ['IN_TRANSIT', 'RECEIVED']);
+  const TRACKING_STATUSES = ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'];
+  let query = db('transfer_orders').whereIn('status', TRACKING_STATUSES);
+
+  if (statusFilter && TRACKING_STATUSES.includes(statusFilter)) {
+    query = query.where('status', statusFilter);
+  }
 
   if (fromWarehouse) {
     query = query.where('from_warehouse', fromWarehouse);
@@ -245,7 +251,7 @@ tracking.get('/dashboard', async (c) => {
     getSlaRules(),
     getWarehouseIdMap(),
     db('transfer_orders')
-      .whereIn('status', ['IN_TRANSIT', 'RECEIVED'])
+      .whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
       .select([
         'id',
         'status',
@@ -253,8 +259,8 @@ tracking.get('/dashboard', async (c) => {
         'transport_type',
         'pickup_time',
       ]),
-    db('transfer_orders').whereIn('status', ['IN_TRANSIT', 'RECEIVED']).select('to_warehouse').count('* as count').groupBy('to_warehouse'),
-    db('transfer_orders').whereIn('status', ['IN_TRANSIT', 'RECEIVED']).select('transport_type').count('* as count').groupBy('transport_type'),
+    db('transfer_orders').whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('to_warehouse').count('* as count').groupBy('to_warehouse'),
+    db('transfer_orders').whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('transport_type').count('* as count').groupBy('transport_type'),
     db('transfer_orders').where('status', 'RECEIVED').where('logistics_sign_time', '>=', sevenDaysAgo.toISOString()).select('logistics_sign_time'),
   ]);
 
@@ -594,7 +600,7 @@ tracking.post('/sla-check', async (c) => {
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
 
   const inTransitOrders = await db('transfer_orders')
-    .whereIn('status', ['IN_TRANSIT', 'RECEIVED'])
+    .whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
     .select([
       'id',
       'status',
