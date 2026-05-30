@@ -28,6 +28,7 @@ interface OrderRow {
   logistics_sign_time: string;
   shelf_time: string;
   expected_arrival_date: string;
+  expected_shelf_date: string;
 }
 
 interface Warehouse {
@@ -313,10 +314,10 @@ export default function OrderListPage() {
       },
     },
     {
-      key: 'expected_arrival_date',
-      title: '预计签收',
+      key: 'expected_shelf_date',
+      title: '预计上架',
       render: (_, row) => {
-        const val = row.expected_arrival_date as string;
+        const val = row.expected_shelf_date as string;
         if (!val) return <span className="text-text-tertiary">—</span>;
         const d = new Date(val);
         if (isNaN(d.getTime())) return <span className="text-text-tertiary">—</span>;
@@ -326,6 +327,17 @@ export default function OrderListPage() {
         if (diffDays < 0) return <span className="text-red font-medium">{str} ⚠</span>;
         if (diffDays <= 3) return <span className="text-orange">{str}</span>;
         return <span>{str}</span>;
+      },
+    },
+    {
+      key: 'shelf_time',
+      title: '上架时间',
+      render: (_, row) => {
+        const val = row.shelf_time as string;
+        if (!val) return <span className="text-text-tertiary">—</span>;
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return <span className="text-text-tertiary">—</span>;
+        return <span className="text-xs tabular-nums">{d.toLocaleDateString('zh-CN')}</span>;
       },
     },
     {

@@ -32,11 +32,13 @@ interface InTransitRow {
   sla_days: number;
   pickup_time: string;
   expected_arrival: string;
+  expected_shelf_date: string;
   remaining_days: number | null;
   is_timeout: boolean;
   is_logistics_abnormal: number;
   logistics_abnormal_type: string;
   latest_event: string;
+  shelf_time: string;
   carton_items: { carton_no: string; system_sku: string; overseas_sku: string; qty: number; outbound_qty: number }[];
 }
 
@@ -260,7 +262,7 @@ export default function TrackingPage() {
         const s = row.status as string;
         if (s === 'OUTBOUNDED') return <Badge variant="shipped">已出库</Badge>;
         if (s === 'IN_TRANSIT') return <Badge variant="transit">在途</Badge>;
-        if (s === 'RECEIVED') return <Badge variant="received">已签收</Badge>;
+        if (s === 'RECEIVED') return <Badge variant="received">已到仓</Badge>;
         if (s === 'SHELVED') return <Badge variant="shelved">已上架</Badge>;
         return <Badge variant="pending">{s}</Badge>;
       },
@@ -322,9 +324,9 @@ export default function TrackingPage() {
     },
     {
       key: 'expected_arrival',
-      title: '预计签收',
+      title: '预计上架',
       render: (_, row) => {
-        const val = row.expected_arrival as string;
+        const val = row.expected_shelf_date as string || row.expected_arrival as string;
         if (!val) return <span className="text-text-tertiary">—</span>;
         const d = new Date(val);
         if (isNaN(d.getTime())) return <span className="text-text-tertiary">—</span>;
@@ -341,6 +343,13 @@ export default function TrackingPage() {
           </span>
         );
       },
+    },
+    {
+      key: 'shelf_time',
+      title: '上架时间',
+      render: (_, row) => (
+        <span className="tabular-nums">{formatDate(row.shelf_time as string)}</span>
+      ),
     },
     {
       key: 'latest_event',

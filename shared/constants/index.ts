@@ -14,7 +14,7 @@ export const TransferStatusLabel: Record<TransferStatus, string> = {
   PENDING_OUTBOUND: '待出库',
   OUTBOUNDED: '已出库',
   IN_TRANSIT: '在途',
-  RECEIVED: '已签收',
+  RECEIVED: '已到仓',
   SHELVED: '已上架',
   COMPLETED: '已完成',
   CANCELLED: '已取消',

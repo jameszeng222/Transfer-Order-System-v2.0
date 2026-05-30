@@ -51,6 +51,14 @@ function checkLogisticsAbnormal(order: Record<string, any>, today: Date): Record
   return updates;
 }
 
+function computeStatusFromTimeline(order: Record<string, any>): string | null {
+  if (order.shelf_time) return 'SHELVED';
+  if (order.logistics_sign_time) return 'RECEIVED';
+  if (order.departure_time || order.arrival_port_time || order.customs_clearance_time || order.last_mile_pickup_time) return 'IN_TRANSIT';
+  if (order.pickup_time) return 'OUTBOUNDED';
+  return null;
+}
+
 const STATUS_FLOW: Record<string, string[]> = {
   PENDING_OUTBOUND: ['OUTBOUNDED', 'CANCELLED'],
   OUTBOUNDED: ['IN_TRANSIT', 'CANCELLED'],
@@ -209,6 +217,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       'logistics_sign_time',
       'shelf_time',
       'expected_arrival_date',
+      'expected_shelf_date',
     ])
     .offset((page - 1) * pageSize)
     .limit(pageSize)
@@ -438,6 +447,15 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
 
   const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
   Object.assign(updates, abnormalUpdates);
+
+  const hasTimeFieldUpdate = TIME_FIELDS.some(f => updates[f] !== undefined);
+  if (hasTimeFieldUpdate) {
+    const mergedOrder = { ...order, ...updates };
+    const computedStatus = computeStatusFromTimeline(mergedOrder);
+    if (computedStatus && computedStatus !== order.status) {
+      updates.status = computedStatus;
+    }
+  }
 
   await db('transfer_orders').where({ transfer_no: transferNo }).update(updates);
 
@@ -729,6 +747,15 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
 
   const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
   Object.assign(updates, abnormalUpdates);
+
+  const hasTimeFieldUpdate = TIME_FIELDS.some(f => updates[f] !== undefined);
+  if (hasTimeFieldUpdate) {
+    const mergedOrder = { ...order, ...updates };
+    const computedStatus = computeStatusFromTimeline(mergedOrder);
+    if (computedStatus && computedStatus !== order.status) {
+      updates.status = computedStatus;
+    }
+  }
 
   if (Object.keys(updates).length > 1) {
     await db('transfer_orders').where({ transfer_no: transferNo }).update(updates);

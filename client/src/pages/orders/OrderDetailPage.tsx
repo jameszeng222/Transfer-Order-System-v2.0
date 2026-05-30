@@ -346,7 +346,7 @@ export default function OrderDetailPage() {
       title: '时间节点',
       items: [
         { label: '发货日期', value: order.pickup_time ? `${formatShortDate(order.pickup_time)}` : '--' },
-        { label: '预计签收', value: order.expected_arrival_date ? formatShortDate(order.expected_arrival_date) : '--' },
+        { label: '预计上架', value: order.expected_shelf_date ? formatShortDate(order.expected_shelf_date) : (order.expected_arrival_date ? formatShortDate(order.expected_arrival_date) : '--') },
         { label: '预计上架', value: order.expected_shelf_date ? formatShortDate(order.expected_shelf_date) : '--' },
         { label: '实际到货', value: order.actual_arrival_date ? formatShortDate(order.actual_arrival_date) : '--' },
       ],
@@ -434,7 +434,7 @@ export default function OrderDetailPage() {
 
   const getCartonStatusLabel = (ct: Carton): string => {
     if (ct.shelf_time) return '已上架';
-    if (ct.logistics_sign_time) return '已签收';
+    if (ct.logistics_sign_time) return '已到仓';
     if (ct.is_shelf_abnormal) return '上架异常';
     return '在途';
   };

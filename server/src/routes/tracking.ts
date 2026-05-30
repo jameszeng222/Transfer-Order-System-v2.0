@@ -65,7 +65,7 @@ function computeRemainingDays(pickupTime: string | null, slaDays: number): numbe
 
 function computeLatestEvent(row: any): string {
   const nodes: [string, string][] = [
-    ['已签收', row.logistics_sign_time],
+    ['已到仓', row.logistics_sign_time],
     ['尾程提取', row.last_mile_pickup_time],
     ['已清关', row.customs_clearance_time],
     ['已到港', row.arrival_port_time],
@@ -164,6 +164,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       'shelf_abnormal_type',
       'timeline_requirement_days',
       'expected_arrival_date',
+      'expected_shelf_date',
       'estimated_unit_price',
       'estimated_freight',
       'freight_currency',
@@ -171,6 +172,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       'is_paid',
       'create_time',
       'remark',
+      'shelf_time',
     ])
     .orderBy('pickup_time', 'asc')
     .offset((page - 1) * pageSize)
@@ -247,7 +249,7 @@ tracking.get('/dashboard', async (c) => {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const [slaRules, warehouseIdMap, inTransitOrders, warehouseDistRows, transportDistRows, recentReceived] = await Promise.all([
+  const [slaRules, warehouseIdMap, inTransitOrders, warehouseDistRows, transportDistRows, carrierDistRows, recentReceived] = await Promise.all([
     getSlaRules(),
     getWarehouseIdMap(),
     db('transfer_orders')
@@ -261,6 +263,7 @@ tracking.get('/dashboard', async (c) => {
       ]),
     db('transfer_orders').whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('to_warehouse').count('* as count').groupBy('to_warehouse'),
     db('transfer_orders').whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('transport_type').count('* as count').groupBy('transport_type'),
+    db('transfer_orders').whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('logistics_carrier').count('* as count').groupBy('logistics_carrier'),
     db('transfer_orders').where('status', 'RECEIVED').where('logistics_sign_time', '>=', sevenDaysAgo.toISOString()).select('logistics_sign_time'),
   ]);
 
@@ -287,6 +290,12 @@ tracking.get('/dashboard', async (c) => {
   const transportDist: Record<string, number> = {};
   for (const row of transportDistRows) {
     transportDist[row.transport_type] = Number(row.count);
+  }
+
+  const carrierDist: Record<string, number> = {};
+  for (const row of carrierDistRows) {
+    const carrier = row.logistics_carrier || '未指定';
+    carrierDist[carrier] = Number(row.count);
   }
 
   const dailyTrend: Record<string, number> = {};
@@ -317,6 +326,10 @@ tracking.get('/dashboard', async (c) => {
       })),
       transportDistribution: Object.entries(transportDist).map(([transport_type, count]) => ({
         transport_type,
+        count,
+      })),
+      carrierDistribution: Object.entries(carrierDist).map(([carrier, count]) => ({
+        carrier,
         count,
       })),
       recentTrend: trendDays,
@@ -493,7 +506,6 @@ tracking.get('/export', async (c) => {
     '签出-签收时效(天)',
     '签收-上架时效(天)',
     '卸货-上架时效(天)',
-    '预计签收时间',
     '预计上架时间',
     '上架数量差异',
     '是否物流异常',

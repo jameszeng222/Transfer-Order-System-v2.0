@@ -11,6 +11,7 @@ interface DashboardData {
   approachingCount: number;
   warehouseDistribution: { warehouse: string; count: number }[];
   transportDistribution: { transport_type: string; count: number }[];
+  carrierDistribution: { carrier: string; count: number }[];
   recentTrend: { date: string; count: number }[];
 }
 
@@ -37,7 +38,7 @@ const statusSegments = [
   { label: '待出库', count: 12, color: '#6b7280', pct: 9 },
   { label: '已出库', count: 8, color: 'var(--accent)', pct: 6 },
   { label: '在途', count: 15, color: 'var(--orange)', pct: 12 },
-  { label: '已签收', count: 10, color: 'var(--teal)', pct: 8 },
+  { label: '已到仓', count: 10, color: 'var(--teal)', pct: 8 },
   { label: '已上架', count: 26, color: '#0d9488', pct: 20 },
   { label: '已完成', count: 56, color: 'var(--purple)', pct: 43 },
   { label: '异常', count: 4, color: 'var(--red)', pct: 2 },
@@ -63,13 +64,6 @@ const slaData: { type: TransportType; pct: number; barColor: string }[] = [
   { type: 'AIR', pct: 95, barColor: 'bg-green' },
   { type: 'RAIL', pct: 82, barColor: 'bg-green' },
   { type: 'TRUCK', pct: 88, barColor: 'bg-green' },
-];
-
-const sourceItems = [
-  { label: '万邑通API', value: 45, color: 'text-accent' },
-  { label: '亚马逊', value: 12, color: 'text-orange' },
-  { label: '手工创建', value: 52, color: 'text-text-secondary' },
-  { label: '其他', value: 18, color: 'text-purple' },
 ];
 
 export default function DashboardPage() {
@@ -160,15 +154,34 @@ export default function DashboardPage() {
             </div>
           </Card>
 
-          <Card title="来源分布">
+          <Card title="物流商分布">
             <div className="px-5 py-4">
-              <div className="flex gap-5 text-xs">
-                {sourceItems.map((item) => (
-                  <div key={item.label} className="text-center">
-                    <div className={`text-xl font-bold ${item.color}`} style={{ fontFamily: "'DM Sans', sans-serif" }}>{item.value}</div>
-                    <div className="text-text-tertiary text-[11px]">{item.label}</div>
+              <div className="flex gap-5 text-xs flex-wrap">
+                {(data?.carrierDistribution || []).map((item) => (
+                  <div key={item.carrier} className="text-center">
+                    <div className="text-xl font-bold text-accent" style={{ fontFamily: "'DM Sans', sans-serif" }}>{item.count}</div>
+                    <div className="text-text-tertiary text-[11px]">{item.carrier}</div>
                   </div>
                 ))}
+                {(!data?.carrierDistribution || data.carrierDistribution.length === 0) && (
+                  <div className="text-text-tertiary text-[11px]">暂无数据</div>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <Card title="目的仓分布">
+            <div className="px-5 py-4">
+              <div className="flex gap-5 text-xs flex-wrap">
+                {(data?.warehouseDistribution || []).map((item) => (
+                  <div key={item.warehouse} className="text-center">
+                    <div className="text-xl font-bold text-orange" style={{ fontFamily: "'DM Sans', sans-serif" }}>{item.count}</div>
+                    <div className="text-text-tertiary text-[11px]">{item.warehouse}</div>
+                  </div>
+                ))}
+                {(!data?.warehouseDistribution || data.warehouseDistribution.length === 0) && (
+                  <div className="text-text-tertiary text-[11px]">暂无数据</div>
+                )}
               </div>
             </div>
           </Card>
