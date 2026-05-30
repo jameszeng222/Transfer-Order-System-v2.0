@@ -93,7 +93,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const team = c.req.query('team');
   const abnormal = c.req.query('abnormal');
 
-  let query = db('transfer_orders').where('status', 'IN_TRANSIT');
+  let query = db('transfer_orders').whereIn('status', ['IN_TRANSIT', 'RECEIVED']);
 
   if (fromWarehouse) {
     query = query.where('from_warehouse', fromWarehouse);
@@ -245,15 +245,16 @@ tracking.get('/dashboard', async (c) => {
     getSlaRules(),
     getWarehouseIdMap(),
     db('transfer_orders')
-      .where('status', 'IN_TRANSIT')
+      .whereIn('status', ['IN_TRANSIT', 'RECEIVED'])
       .select([
         'id',
+        'status',
         'to_warehouse',
         'transport_type',
         'pickup_time',
       ]),
-    db('transfer_orders').where('status', 'IN_TRANSIT').select('to_warehouse').count('* as count').groupBy('to_warehouse'),
-    db('transfer_orders').where('status', 'IN_TRANSIT').select('transport_type').count('* as count').groupBy('transport_type'),
+    db('transfer_orders').whereIn('status', ['IN_TRANSIT', 'RECEIVED']).select('to_warehouse').count('* as count').groupBy('to_warehouse'),
+    db('transfer_orders').whereIn('status', ['IN_TRANSIT', 'RECEIVED']).select('transport_type').count('* as count').groupBy('transport_type'),
     db('transfer_orders').where('status', 'RECEIVED').where('logistics_sign_time', '>=', sevenDaysAgo.toISOString()).select('logistics_sign_time'),
   ]);
 
@@ -261,6 +262,7 @@ tracking.get('/dashboard', async (c) => {
   let approachingCount = 0;
 
   for (const order of inTransitOrders) {
+    if (order.status === 'RECEIVED') continue;
     const slaDays = computeSlaDays(order.to_warehouse, order.transport_type, slaRules, warehouseIdMap);
     const remaining = computeRemainingDays(order.pickup_time, slaDays);
 
@@ -592,9 +594,10 @@ tracking.post('/sla-check', async (c) => {
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
 
   const inTransitOrders = await db('transfer_orders')
-    .where('status', 'IN_TRANSIT')
+    .whereIn('status', ['IN_TRANSIT', 'RECEIVED'])
     .select([
       'id',
+      'status',
       'transfer_no',
       'to_warehouse',
       'transport_type',

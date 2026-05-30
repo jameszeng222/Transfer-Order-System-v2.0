@@ -24,6 +24,7 @@ interface InTransitRow {
   inbound_order_no: string;
   from_warehouse: string;
   to_warehouse: string;
+  status: string;
   transport_type: TransportType;
   logistics_carrier: string;
   logistics_tracking_no: string;
@@ -245,6 +246,16 @@ export default function TrackingPage() {
       key: 'transfer_no',
       title: '调拨单号',
       render: (_, row) => <span>{(row.transfer_no as string) || '--'}</span>,
+    },
+    {
+      key: 'status',
+      title: '状态',
+      render: (_, row) => {
+        const s = row.status as string;
+        if (s === 'IN_TRANSIT') return <Badge variant="transit">在途</Badge>;
+        if (s === 'RECEIVED') return <Badge variant="received">已签收</Badge>;
+        return <Badge variant="pending">{s}</Badge>;
+      },
     },
     {
       key: 'system_sku',
