@@ -40,7 +40,7 @@ const NEXT_STATUS: Record<string, { label: string; value: TransferStatus }> = {
 };
 
 const TIMELINE_NODES = [
-  { key: 'pickup', label: '收件', timeField: 'pickup_time' as const },
+  { key: 'pickup', label: '发货', timeField: 'pickup_time' as const },
   { key: 'depart', label: '离港', timeField: 'departure_time' as const },
   { key: 'arrive_port', label: '到港', timeField: 'arrival_port_time' as const },
   { key: 'clearance', label: '清关', timeField: 'customs_clearance_time' as const },
@@ -345,7 +345,7 @@ export default function OrderDetailPage() {
     {
       title: '时间节点',
       items: [
-        { label: '收件日期', value: order.pickup_time ? `${formatShortDate(order.pickup_time)}` : '--' },
+        { label: '发货日期', value: order.pickup_time ? `${formatShortDate(order.pickup_time)}` : '--' },
         { label: '预计签收', value: order.expected_arrival_date ? formatShortDate(order.expected_arrival_date) : '--' },
         { label: '预计上架', value: order.expected_shelf_date ? formatShortDate(order.expected_shelf_date) : '--' },
         { label: '实际到货', value: order.actual_arrival_date ? formatShortDate(order.actual_arrival_date) : '--' },

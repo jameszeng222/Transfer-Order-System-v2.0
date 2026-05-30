@@ -230,21 +230,21 @@ export default function TrackingPage() {
 
   const columns: ColumnDef[] = [
     {
-      key: 'transfer_no',
-      title: '调拨单号',
+      key: 'inbound_order_no',
+      title: '第三方入库单号',
       render: (_, row) => (
         <span
           className="font-medium text-accent cursor-pointer hover:text-accent-hover transition-colors"
           onClick={() => navigate(`/orders/detail?transferNo=${row.transfer_no as string}`)}
         >
-          {(row.transfer_no as string) || '--'}
+          {(row.inbound_order_no as string) || '--'}
         </span>
       ),
     },
     {
-      key: 'inbound_order_no',
-      title: '第三方入库单号',
-      render: (_, row) => <span>{(row.inbound_order_no as string) || '--'}</span>,
+      key: 'transfer_no',
+      title: '调拨单号',
+      render: (_, row) => <span>{(row.transfer_no as string) || '--'}</span>,
     },
     {
       key: 'system_sku',
@@ -296,7 +296,7 @@ export default function TrackingPage() {
     },
     {
       key: 'pickup_time',
-      title: '收件日期',
+      title: '发货日期',
       render: (_, row) => (
         <span className="tabular-nums">{formatDate(row.pickup_time as string)}</span>
       ),

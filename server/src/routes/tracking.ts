@@ -70,7 +70,7 @@ function computeLatestEvent(row: any): string {
     ['已清关', row.customs_clearance_time],
     ['已到港', row.arrival_port_time],
     ['已离港', row.departure_time],
-    ['已收件', row.pickup_time],
+    ['已发货', row.pickup_time],
   ];
   for (const [label, time] of nodes) {
     if (time) return label;
@@ -474,7 +474,7 @@ tracking.get('/export', async (c) => {
     '运输类型',
     '运输时效要求(天)',
     '运单号',
-    '收件日期(北京)',
+    '发货日期(北京)',
     '离港时间',
     '到港时间',
     '清关时间',

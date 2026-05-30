@@ -15,7 +15,7 @@ interface TimeFilterPanelProps {
 const FIELDS = [
   { key: 'createTimeRange', label: '创建时间', startKey: 'start', endKey: 'end' },
   { key: 'departureTimeRange', label: '出库时间', startKey: 'start', endKey: 'end' },
-  { key: 'pickupTimeRange', label: '收件时间', startKey: 'start', endKey: 'end' },
+  { key: 'pickupTimeRange', label: '发货时间', startKey: 'start', endKey: 'end' },
   { key: 'logisticsSignTimeRange', label: '签收时间', startKey: 'start', endKey: 'end' },
   { key: 'shelfTimeRange', label: '上架时间', startKey: 'start', endKey: 'end' },
 ] as const;
