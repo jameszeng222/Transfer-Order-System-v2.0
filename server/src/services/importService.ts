@@ -462,6 +462,7 @@ async function createSubRecords(
       inbound_order_no: inboundOrderNo,
       sku_code: skuCode,
       sku_name: firstSkuRow.sku_name || null,
+      overseas_sku_code: firstSkuRow.overseas_sku_code || null,
       expected_qty: totalExpectedQty,
       outbound_qty: totalOutboundQty,
       inbound_qty: 0,
@@ -586,6 +587,9 @@ async function mergeSubRecords(
       if (hasValue(firstSkuRow.sku_name)) {
         itemUpdates.sku_name = firstSkuRow.sku_name;
       }
+      if (hasValue(firstSkuRow.overseas_sku_code)) {
+        itemUpdates.overseas_sku_code = firstSkuRow.overseas_sku_code;
+      }
       if (totalExpectedQty > 0) {
         itemUpdates.expected_qty = totalExpectedQty;
       }
@@ -601,6 +605,7 @@ async function mergeSubRecords(
         inbound_order_no: inboundOrderNo,
         sku_code: skuCode,
         sku_name: firstSkuRow.sku_name || null,
+        overseas_sku_code: firstSkuRow.overseas_sku_code || null,
         expected_qty: totalExpectedQty,
         outbound_qty: totalOutboundQty,
         inbound_qty: 0,
