@@ -6,6 +6,7 @@ import {
   importInboundReturn,
   importLogisticsMerged,
   processFreightImport,
+  importCartonList,
   generateTemplate,
 } from '../services/importService.js';
 
@@ -157,6 +158,31 @@ imports.post('/freight', async (c) => {
   }
 });
 
+imports.post('/carton', async (c) => {
+  try {
+    const parsed = await parseUploadFile(c);
+    if (parsed instanceof Response) return parsed;
+    const { buffer, operator, filename } = parsed;
+    const result = await importCartonList(buffer, operator);
+    await db('change_logs').insert({
+      record_type: 'import_history',
+      record_id: 0,
+      transfer_no: '',
+      field_name: 'IMPORT_CARTON',
+      old_value: filename,
+      new_value: `${result.success}/${result.failed}`,
+      change_source: 'IMPORT',
+      operator,
+      change_time: new Date().toISOString(),
+      reason: `入库单箱单导入: 成功${result.success}/失败${result.failed}`,
+    });
+    return c.json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('[import/carton] Error:', err?.message || err);
+    return c.json({ success: false, error: `导入失败: ${err?.message || '未知错误'}` }, 500);
+  }
+});
+
 imports.get('/templates/:type', async (c) => {
   const hasPermission = await requirePermission(c, 'import.execute');
   if (!hasPermission) {
@@ -164,7 +190,7 @@ imports.get('/templates/:type', async (c) => {
   }
 
   const type = c.req.param('type');
-  const validTypes = ['main', 'logistics', 'inbound', 'freight'];
+  const validTypes = ['main', 'logistics', 'inbound', 'freight', 'carton'];
   if (!validTypes.includes(type)) {
     return c.json({ success: false, error: `无效的模板类型，支持: ${validTypes.join(', ')}` }, 400);
   }
@@ -175,6 +201,7 @@ imports.get('/templates/:type', async (c) => {
     logistics: '物流信息',
     inbound: '入库回传',
     freight: '运费账单',
+    carton: '入库单箱单',
   };
 
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -193,14 +220,14 @@ imports.get('/history', async (c) => {
 
   const data = await db('change_logs')
     .where('change_source', 'IMPORT')
-    .whereIn('field_name', ['IMPORT_CREATE', 'IMPORT_OVERWRITE', 'IMPORT_INBOUND', 'IMPORT_LOGISTICS_MERGED', 'IMPORT_FREIGHT'])
+    .whereIn('field_name', ['IMPORT_CREATE', 'IMPORT_OVERWRITE', 'IMPORT_INBOUND', 'IMPORT_LOGISTICS_MERGED', 'IMPORT_FREIGHT', 'IMPORT_CARTON'])
     .orderBy('change_time', 'desc')
     .offset((page - 1) * pageSize)
     .limit(pageSize);
 
   const totalResult = await db('change_logs')
     .where('change_source', 'IMPORT')
-    .whereIn('field_name', ['IMPORT_CREATE', 'IMPORT_OVERWRITE', 'IMPORT_INBOUND', 'IMPORT_LOGISTICS_MERGED', 'IMPORT_FREIGHT'])
+    .whereIn('field_name', ['IMPORT_CREATE', 'IMPORT_OVERWRITE', 'IMPORT_INBOUND', 'IMPORT_LOGISTICS_MERGED', 'IMPORT_FREIGHT', 'IMPORT_CARTON'])
     .count('* as count').first();
   const total = Number(totalResult?.count || 0);
 
@@ -210,6 +237,7 @@ imports.get('/history', async (c) => {
     IMPORT_INBOUND: '入库回传',
     IMPORT_LOGISTICS_MERGED: '物流信息导入',
     IMPORT_FREIGHT: '运费账单导入',
+    IMPORT_CARTON: '入库单箱单导入',
   };
 
   const history = data.map((row: any) => ({

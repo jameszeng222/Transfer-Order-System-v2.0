@@ -95,6 +95,15 @@ const CARTON_TIME_MAP: Record<string, string> = {
   shelf_time: 'shelf_time',
 };
 
+const CARTON_LIST_COLUMN_MAP: Record<string, string> = {
+  '第三方入库单号': 'inbound_order_no',
+  '箱号': 'carton_no',
+  '赫特SKU': 'sku_code',
+  '第三方SKU': 'overseas_sku_code',
+  '实发数量': 'outbound_qty',
+  '箱号（赫特）': 'carton_no_hermes',
+};
+
 const FREIGHT_COLUMN_MAP: Record<string, string> = {
   '第三方入库单号': 'inbound_order_no',
   '物流商': 'logistics_carrier',
@@ -297,6 +306,14 @@ async function processOrderGroup(
       }
     }
 
+    if (hasValue(orderData.pickup_time)) {
+      orderData.status = 'IN_TRANSIT';
+    } else if ('pickup_time' in firstRow && !hasValue(firstRow.pickup_time)) {
+      if (existingOrder.status === 'PENDING_OUTBOUND') {
+        orderData.status = 'OUTBOUNDED';
+      }
+    }
+
     await trx('transfer_orders').where({ id: existingOrder.id }).update(orderData);
 
     await mergeSubRecords(trx, existingOrder.transfer_no, inboundOrderNo, rows);
@@ -334,6 +351,13 @@ async function processOrderGroup(
       if (hasValue(firstRow[field])) {
         orderData[field] = firstRow[field];
       }
+    }
+    if (hasValue(orderData.pickup_time)) {
+      orderData.status = 'IN_TRANSIT';
+    } else if ('pickup_time' in firstRow) {
+      orderData.status = 'OUTBOUNDED';
+    } else {
+      orderData.status = 'PENDING_OUTBOUND';
     }
     const [inserted] = await trx('transfer_orders').insert(orderData).returning('*');
 
@@ -1249,6 +1273,202 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
   };
 }
 
+export async function importCartonList(buffer: ArrayBuffer, operator: string): Promise<ImportResult> {
+  const { headers, rows } = parseExcel(buffer);
+  if (headers.length === 0 || rows.length === 0) {
+    return { total: 0, success: 0, failed: 0, errors: [{ row: 0, message: 'Excel文件为空或无有效数据' }], createdOrders: 0, updatedOrders: 0 };
+  }
+
+  const parsedRows = mapRowsWithColumnMap(headers, rows, CARTON_LIST_COLUMN_MAP);
+  const errors: RowError[] = [];
+  const validRows: ParsedRow[] = [];
+
+  for (const row of parsedRows) {
+    if (!hasValue(row.inbound_order_no)) {
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号', inbound_order_no: undefined });
+    } else if (!hasValue(row.carton_no)) {
+      errors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 必填字段缺失: 箱号`, inbound_order_no: String(row.inbound_order_no) });
+    } else if (!hasValue(row.sku_code)) {
+      errors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 必填字段缺失: 赫特SKU`, inbound_order_no: String(row.inbound_order_no) });
+    } else {
+      if (hasValue(row.outbound_qty)) {
+        const num = Number(row.outbound_qty);
+        if (isNaN(num)) {
+          errors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 实发数量格式错误`, inbound_order_no: String(row.inbound_order_no) });
+          continue;
+        }
+        row.outbound_qty = Math.round(num);
+      } else {
+        row.outbound_qty = 0;
+      }
+      validRows.push(row);
+    }
+  }
+
+  const orderGroups: Record<string, ParsedRow[]> = {};
+  for (const row of validRows) {
+    const key = String(row.inbound_order_no);
+    if (!orderGroups[key]) orderGroups[key] = [];
+    orderGroups[key].push(row);
+  }
+
+  let updatedOrders = 0;
+  const orderErrors: RowError[] = [];
+
+  await db.transaction(async (trx) => {
+    const inboundOrderNos = Object.keys(orderGroups);
+    if (inboundOrderNos.length === 0) return;
+
+    const orders = await trx('transfer_orders').whereIn('inbound_order_no', inboundOrderNos);
+    const orderMap: Map<string, any> = new Map(orders.map((o: any) => [o.inbound_order_no, o]));
+    const transferNos = orders.map((o: any) => o.transfer_no);
+
+    const allExistingCartons = transferNos.length > 0
+      ? await trx('transfer_cartons').whereIn('transfer_no', transferNos)
+      : [];
+    const existingCartonMap: Map<string, any> = new Map(
+      allExistingCartons.map((c: any) => [`${c.transfer_no}:${c.carton_no}`, c])
+    );
+
+    const allExistingItems = transferNos.length > 0
+      ? await trx('transfer_order_items').whereIn('transfer_no', transferNos)
+      : [];
+    const existingItemMap: Map<string, any> = new Map(
+      allExistingItems.map((i: any) => [`${i.transfer_no}:${i.sku_code}`, i])
+    );
+
+    const newCartons: any[] = [];
+    const cartonUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const allCartonItems: any[] = [];
+    const itemUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const changeLogRecords: any[] = [];
+    const affectedTransferNos: string[] = [];
+
+    for (const [inboundOrderNo, groupRows] of Object.entries(orderGroups)) {
+      try {
+        const order = orderMap.get(inboundOrderNo);
+        if (!order) {
+          for (const row of groupRows) {
+            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单`, inbound_order_no: inboundOrderNo });
+          }
+          continue;
+        }
+
+        affectedTransferNos.push(order.transfer_no);
+
+        const cartonGroups: Record<string, ParsedRow[]> = {};
+        for (const row of groupRows) {
+          const key = String(row.carton_no);
+          if (!cartonGroups[key]) cartonGroups[key] = [];
+          cartonGroups[key].push(row);
+        }
+
+        for (const [cartonNo, cartonRows] of Object.entries(cartonGroups)) {
+          const existingCarton = existingCartonMap.get(`${order.transfer_no}:${cartonNo}`);
+
+          if (existingCarton) {
+            const updates: Record<string, any> = { update_time: new Date().toISOString() };
+            const firstRow = cartonRows[0];
+            if (hasValue(firstRow.carton_no_hermes)) {
+              updates.carton_spec_code = String(firstRow.carton_no_hermes);
+            }
+            if (Object.keys(updates).length > 1) {
+              cartonUpdateList.push({ id: existingCarton.id, data: updates });
+            }
+          } else {
+            const firstRow = cartonRows[0];
+            const cartonData: Record<string, any> = {
+              transfer_no: order.transfer_no,
+              inbound_order_no: inboundOrderNo,
+              carton_no: cartonNo,
+              create_time: new Date().toISOString(),
+              update_time: new Date().toISOString(),
+            };
+            if (hasValue(firstRow.carton_no_hermes)) {
+              cartonData.carton_spec_code = String(firstRow.carton_no_hermes);
+            }
+            newCartons.push(cartonData);
+          }
+
+          for (const row of cartonRows) {
+            allCartonItems.push({
+              carton_no: cartonNo,
+              transfer_no: order.transfer_no,
+              inbound_order_no: inboundOrderNo,
+              sku_code: String(row.sku_code),
+              overseas_sku_code: row.overseas_sku_code || null,
+              qty: Number(row.outbound_qty) || 0,
+            });
+          }
+        }
+
+        const skuQtyMap: Record<string, number> = {};
+        for (const row of groupRows) {
+          const skuKey = String(row.sku_code);
+          skuQtyMap[skuKey] = (skuQtyMap[skuKey] || 0) + (Number(row.outbound_qty) || 0);
+        }
+
+        for (const [skuCode, totalOutboundQty] of Object.entries(skuQtyMap)) {
+          const existingItem = existingItemMap.get(`${order.transfer_no}:${skuCode}`);
+          if (existingItem && totalOutboundQty > 0) {
+            itemUpdateList.push({ id: existingItem.id, data: { outbound_qty: totalOutboundQty } });
+          }
+        }
+
+        changeLogRecords.push({
+          record_type: 'transfer_order',
+          record_id: order.id,
+          transfer_no: order.transfer_no,
+          field_name: 'IMPORT_CARTON',
+          old_value: '',
+          new_value: `${groupRows.length} rows`,
+          change_source: 'IMPORT',
+          operator,
+          reason: '入库单箱单导入',
+        });
+
+        updatedOrders++;
+      } catch (err: any) {
+        for (const row of groupRows) {
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 箱单导入失败: ${err.message}`, inbound_order_no: inboundOrderNo });
+        }
+      }
+    }
+
+    const cartonNos = [...new Set(validRows.map((r) => String(r.carton_no)))];
+
+    if (cartonNos.length > 0 && affectedTransferNos.length > 0) {
+      await trx('transfer_carton_items')
+        .whereIn('transfer_no', affectedTransferNos)
+        .whereIn('carton_no', cartonNos)
+        .del();
+    }
+
+    await batchInsert(trx, 'transfer_cartons', newCartons);
+    await batchUpdateGrouped(trx, 'transfer_cartons', cartonUpdateList);
+    await batchInsert(trx, 'transfer_carton_items', allCartonItems);
+    await batchUpdateGrouped(trx, 'transfer_order_items', itemUpdateList);
+
+    for (const tno of affectedTransferNos) {
+      await recalcOrderStats(trx, tno);
+    }
+
+    await batchInsert(trx, 'change_logs', changeLogRecords);
+  });
+
+  const allErrors = [...errors, ...orderErrors];
+  const successCount = validRows.length - orderErrors.length;
+
+  return {
+    total: parsedRows.length,
+    success: successCount,
+    failed: allErrors.length,
+    errors: allErrors,
+    createdOrders: 0,
+    updatedOrders,
+  };
+}
+
 export function generateTemplate(type: string): ArrayBuffer {
   const headersByType: Record<string, string[]> = {
     main: [
@@ -1265,6 +1485,9 @@ export function generateTemplate(type: string): ArrayBuffer {
     ],
     freight: [
       '第三方入库单号', '物流商', '运费', '报关费', '其他费用', '币种', '汇率', '账单日期', '备注',
+    ],
+    carton: [
+      '第三方入库单号', '箱号', '赫特SKU', '第三方SKU', '实发数量', '箱号（赫特）',
     ],
   };
 

@@ -21,6 +21,7 @@ interface ImportCardConfig {
 
 const IMPORT_CARDS: ImportCardConfig[] = [
   { key: 'main', label: '调拨单导入', badge: '主导入', badgeVariant: 'pending', description: '30个字段，仅第三方入库单号必填，支持覆盖更新', endpoint: '/imports/upload', templateType: 'main' },
+  { key: 'carton', label: '入库单箱单导入', badge: '箱单', badgeVariant: 'shipped', description: '导入箱单明细，支持拼箱场景', endpoint: '/imports/carton', templateType: 'carton' },
   { key: 'logistics', label: '物流信息导入', description: '物流节点+异常+报关+时间节点，合并导入', endpoint: '/imports/logistics', templateType: 'logistics' },
   { key: 'inbound', label: '入库回传', description: '签收/上架数量回传', endpoint: '/imports/inbound', templateType: 'inbound' },
   { key: 'reconcile', label: '运费账单导入', description: '运费确认后自动分摊到SKU', endpoint: '/imports/freight', templateType: 'freight' },

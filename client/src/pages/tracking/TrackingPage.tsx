@@ -103,19 +103,19 @@ export default function TrackingPage() {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    api.get<{ success: boolean; data: Warehouse[] }>('/warehouses?pageSize=100')
+    api.get<{ success: boolean; data: Warehouse[] }>('/warehouses?pageSize=100&is_active=true')
       .then((res) => { if (res.success && Array.isArray(res.data)) setWarehouses(res.data); })
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    api.get<{ success: boolean; data: { id: number; carrier_name: string }[] }>('/carriers?pageSize=100')
+    api.get<{ success: boolean; data: { id: number; carrier_name: string }[] }>('/carriers?pageSize=100&is_active=true')
       .then((res) => { if (res.success && Array.isArray(res.data)) setCarriers(res.data); })
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    api.get<{ success: boolean; data: { id: number; team_name: string }[] }>('/teams?pageSize=100')
+    api.get<{ success: boolean; data: { id: number; team_name: string }[] }>('/teams?pageSize=100&is_active=true')
       .then((res) => { if (res.success && Array.isArray(res.data)) setTeams(res.data); })
       .catch(() => {});
   }, []);
