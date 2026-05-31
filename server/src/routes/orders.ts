@@ -388,6 +388,111 @@ orders.get('/export/:taskId/download', async (c) => {
   });
 });
 
+orders.post('/export-cartons', async (c) => {
+  if (!await requirePermission(c, 'tracking.export')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const transferNo = body.transferNo || '';
+  if (!transferNo) return c.json({ success: false, error: 'transferNo必填' }, 400);
+
+  const task = createTask('cartons', `箱单_${transferNo}.xlsx`);
+  cleanOldTasks();
+
+  (async () => {
+    try {
+      updateProgress(task.id, 10, 100);
+      const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
+      if (!order) { failTask(task.id, '调拨单不存在'); return; }
+
+      updateProgress(task.id, 30);
+      const cartons = await db('transfer_cartons').where({ transfer_no: transferNo }).orderBy('carton_no', 'asc');
+      const cartonItems = await db('transfer_carton_items').where({ transfer_no: transferNo });
+      const orderItems = await db('transfer_order_items').where({ transfer_no: transferNo });
+
+      updateProgress(task.id, 50);
+
+      const itemsByCarton: Record<string, any[]> = {};
+      for (const ci of cartonItems) {
+        if (!itemsByCarton[ci.carton_no]) itemsByCarton[ci.carton_no] = [];
+        itemsByCarton[ci.carton_no].push(ci);
+      }
+      const outboundBySku: Record<string, number> = {};
+      for (const oi of orderItems) {
+        outboundBySku[oi.sku_code] = oi.outbound_qty || oi.expected_qty || 0;
+      }
+
+      const headers = [
+        '第三方入库单号', 'SKU', '海外仓SKU', '箱号', '实发数量', '总箱数',
+        '长', '宽', '高', '仓库实重', '渠道实重', '单价',
+      ];
+
+      const sheetData: any[][] = [];
+      for (const ctn of cartons) {
+        const ctnItems = itemsByCarton[ctn.carton_no] || [{}];
+        for (const item of ctnItems) {
+          sheetData.push([
+            order.inbound_order_no || '',
+            item.sku_code || '',
+            item.overseas_sku_code || '',
+            ctn.carton_no || '',
+            item.qty || outboundBySku[item.sku_code] || '',
+            order.total_carton_count || '',
+            ctn.carton_length || '',
+            ctn.carton_width || '',
+            ctn.carton_height || '',
+            ctn.carton_weight || '',
+            ctn.channel_weight || '',
+            order.estimated_unit_price || '',
+          ]);
+        }
+      }
+
+      if (cartons.length === 0) {
+        sheetData.push([order.inbound_order_no || '', '', '', '', '', order.total_carton_count || '', '', '', '', '', order.estimated_unit_price || '']);
+      }
+
+      updateProgress(task.id, 80);
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...sheetData]);
+      XLSX.utils.book_append_sheet(wb, ws, '箱单');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+      updateProgress(task.id, 95);
+      completeTask(task.id, buf);
+    } catch (err: any) {
+      failTask(task.id, err.message || '导出失败');
+    }
+  })();
+
+  return c.json({ success: true, data: { taskId: task.id } });
+});
+
+orders.get('/export-cartons/:taskId/status', async (c) => {
+  const taskId = c.req.param('taskId');
+  const task = getTask(taskId);
+  if (!task) return c.json({ success: false, error: '任务不存在' }, 404);
+  return c.json({
+    success: true,
+    data: { taskId: task.id, type: task.type, fileName: task.fileName, status: task.status, progress: task.progress, total: task.total, error: task.error },
+  });
+});
+
+orders.get('/export-cartons/:taskId/download', async (c) => {
+  const taskId = c.req.param('taskId');
+  const task = getTask(taskId);
+  if (!task) return c.json({ success: false, error: '任务不存在' }, 404);
+  if (task.status !== 'completed' || !task.buffer) return c.json({ success: false, error: '文件未就绪' }, 400);
+  return new Response(task.buffer, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename=${encodeURIComponent(task.fileName)}`,
+    },
+  });
+});
+
 orders.get('/in-progress', async (c) => {
   if (!await requirePermission(c, 'order.view')) {
     return c.json({ success: false, error: '无权限' }, 403);

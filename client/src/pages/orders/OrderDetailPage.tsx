@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Download } from 'lucide-react';
 import { api } from '../../api/client';
 import { TransferStatusLabel, TransportTypeLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
 import { Button, Card, Badge, Table, EmptyState, Modal, FormField } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
+import { useExportStore } from '../../store/exportStore';
 
 interface CartonItem { id: number; carton_no: string; sku_code: string; sku_name: string; overseas_sku_code: string; product_name: string; qty: number; shelf_qty: number; }
 interface Carton { id: number; carton_no: string; logistics_tracking_no: string; logistics_carrier_order_no: string; carton_length: number; carton_width: number; carton_height: number; carton_weight: number; declared_value: number; departure_time: string; arrival_port_time: string; customs_clearance_time: string; last_mile_pickup_time: string; logistics_sign_time: string; unload_time: string; shelf_time: string; is_shelf_abnormal: number; shelf_abnormal_type: string; shelf_abnormal_remark: string; carton_items: CartonItem[]; }
@@ -237,6 +238,8 @@ export default function OrderDetailPage() {
   const [nodeEditField, setNodeEditField] = useState('');
   const [nodeEditValue, setNodeEditValue] = useState('');
   const [nodeEditSubmitting, setNodeEditSubmitting] = useState(false);
+
+  const { startCartonExport } = useExportStore();
 
   const NODE_STATUS_MAP: Record<string, TransferStatus> = {
     pickup_time: 'IN_TRANSIT',
@@ -546,6 +549,7 @@ export default function OrderDetailPage() {
 
         <Card title="箱明细" actions={
           <div className="flex gap-1.5">
+            <Button variant="secondary" size="sm" icon={Download} onClick={() => startCartonExport(order.transfer_no)}>导出箱单</Button>
             <Button variant="secondary" size="sm">导入箱规</Button>
             <Button variant="secondary" size="sm">导入物流跟踪号</Button>
           </div>

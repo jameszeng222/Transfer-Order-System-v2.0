@@ -24,6 +24,7 @@ interface ExportState {
   pollTask: (taskId: string, type: string) => void;
   downloadTask: (taskId: string, fileName: string) => Promise<void>;
   startExport: (type: string, params: URLSearchParams) => Promise<void>;
+  startCartonExport: (transferNo: string) => Promise<void>;
 }
 
 export const useExportStore = create<ExportState>((set, get) => ({
@@ -44,9 +45,12 @@ export const useExportStore = create<ExportState>((set, get) => ({
 
   pollTask: (taskId, type) => {
     const token = localStorage.getItem('token');
+    const statusUrl = type === 'cartons'
+      ? `${API_BASE}/orders/export-cartons/${taskId}/status`
+      : `${API_BASE}/${type}/export/${taskId}/status`;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`${API_BASE}/${type}/export/${taskId}/status`, {
+        const res = await fetch(statusUrl, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
@@ -81,7 +85,12 @@ export const useExportStore = create<ExportState>((set, get) => ({
   downloadTask: async (taskId, fileName) => {
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API_BASE}/${get().tasks.find((t) => t.taskId === taskId)?.type || 'tracking'}/export/${taskId}/download`, {
+      const task = get().tasks.find((t) => t.taskId === taskId);
+      const taskType = task?.type || 'tracking';
+      const downloadUrl = taskType === 'cartons'
+        ? `${API_BASE}/orders/export-cartons/${taskId}/download`
+        : `${API_BASE}/${taskType}/export/${taskId}/download`;
+      const res = await fetch(downloadUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
@@ -113,7 +122,7 @@ export const useExportStore = create<ExportState>((set, get) => ({
       const task: ExportTask = {
         taskId,
         type,
-        fileName: type === 'tracking' ? '在途明细.xlsx' : '调拨单列表.xlsx',
+        fileName: type === 'tracking' ? '在途明细.xlsx' : type === 'cartons' ? '箱单.xlsx' : '调拨单列表.xlsx',
         status: 'pending',
         progress: 0,
         total: 100,
@@ -123,6 +132,38 @@ export const useExportStore = create<ExportState>((set, get) => ({
       get().addTask(task);
       get().setPanelOpen(true);
       get().pollTask(taskId, type);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '导出失败');
+    }
+  },
+
+  startCartonExport: async (transferNo) => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE}/orders/export-cartons`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transferNo }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert('导出失败: ' + (data.error || '未知错误'));
+        return;
+      }
+      const taskId = data.data.taskId;
+      const task: ExportTask = {
+        taskId,
+        type: 'cartons',
+        fileName: `箱单_${transferNo}.xlsx`,
+        status: 'pending',
+        progress: 0,
+        total: 100,
+        error: null,
+        createdAt: Date.now(),
+      };
+      get().addTask(task);
+      get().setPanelOpen(true);
+      get().pollTask(taskId, 'cartons');
     } catch (err) {
       alert(err instanceof Error ? err.message : '导出失败');
     }

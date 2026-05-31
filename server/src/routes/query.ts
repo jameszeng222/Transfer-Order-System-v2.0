@@ -22,7 +22,7 @@ query.post('/order', async (c) => {
 
     const [items, cartons, trackingEvents, discrepancyRecords, freightBills, changeLogs] = await Promise.all([
       db('transfer_order_items').where({ transfer_no: transferNo }),
-      db('transfer_cartons').where({ transfer_no: transferNo }),
+      db('transfer_cartons').where({ transfer_no: transferNo }).orderBy('carton_no', 'asc'),
       db('tracking_events').where({ transfer_no: transferNo }).orderBy('event_time', 'desc'),
       db('discrepancy_records').where({ transfer_no: transferNo }),
       db('freight_bills').where({ transfer_no: transferNo }),
