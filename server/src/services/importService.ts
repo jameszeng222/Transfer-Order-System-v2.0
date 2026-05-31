@@ -21,7 +21,6 @@ const COLUMN_MAP: Record<string, string> = {
   '提货时间': 'pickup_time',
   '是否报关': 'is_customs_declared',
   '报关工厂': 'customs_factory',
-  '申报品名': 'declared_product_name',
   '申报货值': 'declared_value',
   '备注': 'remark',
 };
@@ -64,7 +63,6 @@ const LOGISTICS_MERGED_COLUMN_MAP: Record<string, string> = {
   '是否报关': 'is_customs_declared',
   '报关工厂': 'customs_factory',
   '是否查验': 'is_inspected',
-  '尾程类型': 'last_mile_type',
   '尾程渠道': 'last_mile_channel',
   '事件时间': 'event_time',
   '事件类型': 'event_type',
@@ -139,7 +137,7 @@ const ORDER_LEVEL_FIELDS = [
 ];
 
 const CARTON_LEVEL_FIELDS = [
-  'carton_spec_code', 'declared_product_name', 'declared_value',
+  'declared_value',
 ];
 
 interface RowError {
@@ -888,23 +886,11 @@ function calcDaysDiff(start: string | null, end: string | null): number | null {
 
 function computeCartonTimeStats(carton: any, orderUpdates: Record<string, any>): Record<string, any> {
   const stats: Record<string, any> = {};
-  const depart = orderUpdates.departure_time || carton.departure_time;
-  const sign = orderUpdates.logistics_sign_time || carton.logistics_sign_time;
   const unload = orderUpdates.unload_time || carton.unload_time;
   const shelf = orderUpdates.shelf_time || carton.shelf_time;
 
-  const c2s = calcDaysDiff(depart, sign);
-  if (c2s !== null) stats.checkout_to_sign_days = c2s;
-  const s2s = calcDaysDiff(sign, shelf);
-  if (s2s !== null) stats.sign_to_shelf_days = s2s;
   const u2s = calcDaysDiff(unload, shelf);
   if (u2s !== null) stats.unload_to_shelf_days = u2s;
-  if (s2s !== null) stats.is_shelf_within_3days = s2s <= 3;
-  if (c2s !== null) {
-    stats.is_carton_within_11days = c2s <= 11;
-    stats.is_carton_within_7days = c2s <= 7;
-    stats.is_carton_within_4days = c2s <= 4;
-  }
   return stats;
 }
 
@@ -955,7 +941,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
     'pickup_time', 'departure_time', 'arrival_port_time', 'customs_clearance_time',
     'last_mile_pickup_time', 'logistics_sign_time', 'unload_time', 'shelf_time',
     'is_customs_declared', 'customs_factory', 'is_inspected',
-    'last_mile_type', 'last_mile_channel',
+    'last_mile_channel',
   ];
 
   await db.transaction(async (trx) => {

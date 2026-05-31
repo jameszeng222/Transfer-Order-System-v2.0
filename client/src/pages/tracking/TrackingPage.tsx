@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, ShieldCheck, Search, RotateCcw } from 'lucide-react';
 import { api, API_BASE } from '../../api/client';
-import { TransportTypeLabel, TransferStatusLabel } from 'shared/constants';
+import { TransportTypeLabel, TransferStatusLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransportType, TransferStatus } from 'shared/constants';
 import { StatCard, Card, FormField, Table, Pagination, Button, Badge, TimeFilterPanel } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
@@ -260,13 +260,8 @@ export default function TrackingPage() {
       key: 'status',
       title: '状态',
       render: (_, row) => {
-        const s = row.status as string;
-        if (s === 'OUTBOUNDED') return <Badge variant="shipped">已出库</Badge>;
-        if (s === 'IN_TRANSIT') return <Badge variant="transit">在途</Badge>;
-        if (s === 'RECEIVED') return <Badge variant="received">已到仓</Badge>;
-        if (s === 'PARTIAL_SHELVED') return <Badge variant="partial_shelved">部分上架</Badge>;
-        if (s === 'SHELVED') return <Badge variant="shelved">已上架</Badge>;
-        return <Badge variant="pending">{s}</Badge>;
+        const s = row.status as TransferStatus;
+        return <Badge variant={StatusBadgeMap[s] || 'pending'}>{TransferStatusLabel[s] || s}</Badge>;
       },
     },
     {

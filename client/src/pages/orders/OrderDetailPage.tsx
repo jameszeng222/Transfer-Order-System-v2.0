@@ -20,7 +20,7 @@ interface OrderDetail {
   total_carton_count: number; logistics_status: string; expected_arrival_date: string; actual_arrival_date: string;
   expected_shelf_date: string; logistics_carrier: string; logistics_tracking_no: string;
   is_customs_declared: number; customs_factory: string; is_inspected: number; timeline_requirement_days: number;
-  remark: string; last_mile_type: string; last_mile_channel: string; pickup_time: string;
+  remark: string; last_mile_channel: string; pickup_time: string;
   departure_time: string; arrival_port_time: string; customs_clearance_time: string; last_mile_pickup_time: string;
   logistics_sign_time: string; unload_time: string; shelf_time: string;
   is_logistics_abnormal: number; logistics_abnormal_type: string; logistics_abnormal_remark: string;
@@ -241,7 +241,7 @@ export default function OrderDetailPage() {
   const NODE_STATUS_MAP: Record<string, TransferStatus> = {
     pickup_time: 'IN_TRANSIT',
     logistics_sign_time: 'RECEIVED',
-    shelf_time: 'SHELVED',
+    shelf_time: 'PARTIAL_SHELVED',
   };
 
   const openNodeEdit = (field: string, currentValue: string) => {
@@ -355,7 +355,6 @@ export default function OrderDetailPage() {
       items: [
         { label: '报关', value: order.is_customs_declared ? `是 · ${order.customs_factory || ''}` : '否' },
         { label: '查验', value: order.is_inspected ? '是' : '否' },
-        { label: '尾程类型', value: order.last_mile_type || '--' },
         { label: '尾程渠道', value: order.last_mile_channel || '--' },
       ],
     },
@@ -639,7 +638,7 @@ export default function OrderDetailPage() {
             <div>
               <span className="text-[11px] text-text-tertiary">上架异常</span>
               <div className="text-[13px] font-medium mt-0.5 text-text-tertiary">
-                {order.is_shelf_abnormal ? '是' : order.status === 'SHELVED' || order.status === 'COMPLETED' ? '否' : '—'}
+                {order.is_shelf_abnormal ? '是' : order.status === 'SHELVED' || order.status === 'PARTIAL_SHELVED' || order.status === 'COMPLETED' ? '否' : '—'}
               </div>
             </div>
             <div>

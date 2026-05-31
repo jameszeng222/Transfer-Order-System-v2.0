@@ -99,7 +99,6 @@ const editOrderSchema = z.object({
   customs_factory: z.string().optional(),
   is_inspected: z.boolean().optional(),
   timeline_requirement_days: z.number().optional(),
-  last_mile_type: z.string().optional(),
   last_mile_channel: z.string().optional(),
   delay_explanation: z.string().optional(),
   remark: z.string().optional(),
@@ -490,16 +489,6 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
       })) {
         if ((updates as any)[orderField]) ctnUpdates[cartonField] = (updates as any)[orderField];
       }
-      if (depart && sign) {
-        ctnUpdates.checkout_to_sign_days = Math.round((new Date(sign).getTime() - new Date(depart).getTime()) / 86400000 * 100) / 100;
-        ctnUpdates.is_carton_within_11days = ctnUpdates.checkout_to_sign_days <= 11;
-        ctnUpdates.is_carton_within_7days = ctnUpdates.checkout_to_sign_days <= 7;
-        ctnUpdates.is_carton_within_4days = ctnUpdates.checkout_to_sign_days <= 4;
-      }
-      if (sign && shelf) {
-        ctnUpdates.sign_to_shelf_days = Math.round((new Date(shelf).getTime() - new Date(sign).getTime()) / 86400000 * 100) / 100;
-        ctnUpdates.is_shelf_within_3days = ctnUpdates.sign_to_shelf_days <= 3;
-      }
       if (unload && shelf) {
         ctnUpdates.unload_to_shelf_days = Math.round((new Date(shelf).getTime() - new Date(unload).getTime()) / 86400000 * 100) / 100;
       }
@@ -627,16 +616,6 @@ orders.put('/batch-status', zValidator('json', z.object({
             customs_clearance_time: 'customs_clearance_time', last_mile_pickup_time: 'last_mile_pickup_time',
             logistics_sign_time: 'logistics_sign_time', unload_time: 'unload_time', shelf_time: 'shelf_time',
           })) { if ((updates as any)[of]) ctnUpdates[cf] = (updates as any)[of]; }
-          if (depart && sign) {
-            ctnUpdates.checkout_to_sign_days = Math.round((new Date(sign).getTime() - new Date(depart).getTime()) / 86400000 * 100) / 100;
-            ctnUpdates.is_carton_within_11days = ctnUpdates.checkout_to_sign_days <= 11;
-            ctnUpdates.is_carton_within_7days = ctnUpdates.checkout_to_sign_days <= 7;
-            ctnUpdates.is_carton_within_4days = ctnUpdates.checkout_to_sign_days <= 4;
-          }
-          if (sign && shelf) {
-            ctnUpdates.sign_to_shelf_days = Math.round((new Date(shelf).getTime() - new Date(sign).getTime()) / 86400000 * 100) / 100;
-            ctnUpdates.is_shelf_within_3days = ctnUpdates.sign_to_shelf_days <= 3;
-          }
           if (unload && shelf) {
             ctnUpdates.unload_to_shelf_days = Math.round((new Date(shelf).getTime() - new Date(unload).getTime()) / 86400000 * 100) / 100;
           }

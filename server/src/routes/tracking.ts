@@ -468,7 +468,6 @@ tracking.get('/export', async (c) => {
     'transfer_orders.is_shelf_abnormal',
     'transfer_orders.shelf_abnormal_type',
     'transfer_orders.delay_explanation',
-    'transfer_orders.last_mile_type',
     'transfer_orders.last_mile_channel',
     'transfer_orders.remark',
   ]);
@@ -506,13 +505,7 @@ tracking.get('/export', async (c) => {
           'logistics_sign_time',
           'unload_time',
           'shelf_time',
-          'checkout_to_sign_days',
-          'sign_to_shelf_days',
           'unload_to_shelf_days',
-          'is_carton_within_11days',
-          'is_carton_within_7days',
-          'is_carton_within_4days',
-          'is_shelf_within_3days',
         ])
     : [];
 
