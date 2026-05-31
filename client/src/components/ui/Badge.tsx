@@ -6,6 +6,7 @@ type BadgeVariant =
   | 'transit'
   | 'received'
   | 'shelved'
+  | 'partial_shelved'
   | 'complete'
   | 'abnormal';
 
@@ -22,6 +23,7 @@ const variantClasses: Record<BadgeVariant, string> = {
   transit: 'bg-orange-light text-orange',
   received: 'bg-green-light text-green',
   shelved: 'bg-teal-light text-teal',
+  partial_shelved: 'bg-yellow-light text-yellow-700',
   complete: 'bg-purple-light text-purple',
   abnormal: 'bg-red-light text-red',
 };

@@ -3,6 +3,7 @@ export const TransferStatus = {
   OUTBOUNDED: 'OUTBOUNDED',
   IN_TRANSIT: 'IN_TRANSIT',
   RECEIVED: 'RECEIVED',
+  PARTIAL_SHELVED: 'PARTIAL_SHELVED',
   SHELVED: 'SHELVED',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
@@ -15,18 +16,20 @@ export const TransferStatusLabel: Record<TransferStatus, string> = {
   OUTBOUNDED: '已出库',
   IN_TRANSIT: '在途',
   RECEIVED: '已到仓',
+  PARTIAL_SHELVED: '部分上架',
   SHELVED: '已上架',
   COMPLETED: '已完成',
   CANCELLED: '已取消',
 };
 
-export type BadgeVariant = 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'complete';
+export type BadgeVariant = 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'partial_shelved' | 'complete';
 
 export const StatusBadgeMap: Record<TransferStatus, BadgeVariant> = {
   PENDING_OUTBOUND: 'pending',
   OUTBOUNDED: 'shipped',
   IN_TRANSIT: 'transit',
   RECEIVED: 'received',
+  PARTIAL_SHELVED: 'partial_shelved',
   SHELVED: 'shelved',
   COMPLETED: 'complete',
   CANCELLED: 'abnormal',

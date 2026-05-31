@@ -52,7 +52,11 @@ function checkLogisticsAbnormal(order: Record<string, any>, today: Date): Record
 }
 
 function computeStatusFromTimeline(order: Record<string, any>): string | null {
-  if (order.shelf_time) return 'SHELVED';
+  if (order.shelf_time) {
+    if (order._all_shelved === true) return 'SHELVED';
+    if (order._all_shelved === false) return 'PARTIAL_SHELVED';
+    return 'SHELVED';
+  }
   if (order.logistics_sign_time) return 'RECEIVED';
   if (order.departure_time || order.arrival_port_time || order.customs_clearance_time || order.last_mile_pickup_time) return 'IN_TRANSIT';
   if (order.pickup_time) return 'OUTBOUNDED';
@@ -63,7 +67,8 @@ const STATUS_FLOW: Record<string, string[]> = {
   PENDING_OUTBOUND: ['OUTBOUNDED', 'CANCELLED'],
   OUTBOUNDED: ['IN_TRANSIT', 'CANCELLED'],
   IN_TRANSIT: ['RECEIVED', 'CANCELLED'],
-  RECEIVED: ['SHELVED', 'CANCELLED'],
+  RECEIVED: ['SHELVED', 'PARTIAL_SHELVED', 'CANCELLED'],
+  PARTIAL_SHELVED: ['SHELVED', 'COMPLETED', 'CANCELLED'],
   SHELVED: ['COMPLETED', 'CANCELLED'],
   COMPLETED: [],
   CANCELLED: [],
@@ -77,6 +82,7 @@ const statusChangeSchema = z.object({
     'OUTBOUNDED',
     'IN_TRANSIT',
     'RECEIVED',
+    'PARTIAL_SHELVED',
     'SHELVED',
     'COMPLETED',
     'CANCELLED',
@@ -363,7 +369,7 @@ orders.get('/in-progress', async (c) => {
   const pageSize = Math.min(Number(c.req.query('pageSize')) || 10, 50);
 
   const allOrders = await db('transfer_orders')
-    .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
+    .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED'])
     .select(['transfer_no', 'inbound_order_no', 'status', 'from_warehouse', 'to_warehouse', 'transport_type', 'logistics_carrier', 'logistics_tracking_no', 'total_carton_count', 'total_freight_amount', 'is_reconciled'])
     .orderBy('create_time', 'desc');
 
@@ -436,6 +442,7 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
   if (newStatus === 'IN_TRANSIT' && !order.pickup_time && !updates.pickup_time) updates.pickup_time = now;
   if (newStatus === 'RECEIVED' && !order.logistics_sign_time && !updates.logistics_sign_time) updates.logistics_sign_time = now;
   if (newStatus === 'SHELVED' && !order.shelf_time && !updates.shelf_time) updates.shelf_time = now;
+  if (newStatus === 'PARTIAL_SHELVED' && !order.shelf_time && !updates.shelf_time) updates.shelf_time = now;
 
   const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
   Object.assign(updates, abnormalUpdates);
@@ -443,6 +450,11 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
   const hasTimeFieldUpdate = TIME_FIELDS.some(f => updates[f] !== undefined);
   if (hasTimeFieldUpdate) {
     const mergedOrder = { ...order, ...updates };
+    if (mergedOrder.shelf_time) {
+      const items = await db('transfer_order_items').where({ transfer_no: transferNo });
+      const allShelved = items.every((i: any) => (i.shelf_qty || 0) >= (i.outbound_qty || i.expected_qty || 0));
+      mergedOrder._all_shelved = allShelved;
+    }
     const computedStatus = computeStatusFromTimeline(mergedOrder);
     if (computedStatus && computedStatus !== order.status) {
       updates.status = computedStatus;
@@ -516,7 +528,7 @@ orders.put('/status', zValidator('json', statusChangeWithTransferSchema), async 
 
 orders.put('/batch-status', zValidator('json', z.object({
   transferNos: z.array(z.string().min(1)).min(1),
-  status: z.enum(['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED', 'COMPLETED', 'CANCELLED']),
+  status: z.enum(['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED', 'COMPLETED', 'CANCELLED']),
   remark: z.string().optional(),
 })), async (c) => {
   if (!await requirePermission(c, 'order.confirm')) {
@@ -554,6 +566,7 @@ orders.put('/batch-status', zValidator('json', z.object({
     if (newStatus === 'IN_TRANSIT' && !order.pickup_time) updates.pickup_time = now;
     if (newStatus === 'RECEIVED' && !order.logistics_sign_time) updates.logistics_sign_time = now;
     if (newStatus === 'SHELVED' && !order.shelf_time) updates.shelf_time = now;
+    if (newStatus === 'PARTIAL_SHELVED' && !order.shelf_time) updates.shelf_time = now;
 
     const abnormalUpdates = checkLogisticsAbnormal({ ...order, ...updates }, new Date());
     Object.assign(updates, abnormalUpdates);
@@ -743,6 +756,11 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
   const hasTimeFieldUpdate = TIME_FIELDS.some(f => updates[f] !== undefined);
   if (hasTimeFieldUpdate) {
     const mergedOrder = { ...order, ...updates };
+    if (mergedOrder.shelf_time) {
+      const items = await db('transfer_order_items').where({ transfer_no: transferNo });
+      const allShelved = items.every((i: any) => (i.shelf_qty || 0) >= (i.outbound_qty || i.expected_qty || 0));
+      mergedOrder._all_shelved = allShelved;
+    }
     const computedStatus = computeStatusFromTimeline(mergedOrder);
     if (computedStatus && computedStatus !== order.status) {
       updates.status = computedStatus;

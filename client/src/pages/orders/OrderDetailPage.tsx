@@ -36,6 +36,7 @@ const NEXT_STATUS: Record<string, { label: string; value: TransferStatus }> = {
   OUTBOUNDED: { label: '确认在途', value: 'IN_TRANSIT' },
   IN_TRANSIT: { label: '确认签收', value: 'RECEIVED' },
   RECEIVED: { label: '确认上架', value: 'SHELVED' },
+  PARTIAL_SHELVED: { label: '确认全部上架', value: 'SHELVED' },
   SHELVED: { label: '确认完成', value: 'COMPLETED' },
 };
 

@@ -95,7 +95,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const statusFilter = c.req.query('status');
   const keyword = c.req.query('keyword');
 
-  const TRACKING_STATUSES = ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'];
+  const TRACKING_STATUSES = ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED'];
   let query = db('transfer_orders').whereIn('status', TRACKING_STATUSES);
 
   if (keyword) {
@@ -308,7 +308,7 @@ tracking.get('/dashboard', async (c) => {
     getSlaRules(),
     getWarehouseIdMap(),
     db('transfer_orders')
-      .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
+      .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED'])
       .select([
         'id',
         'status',
@@ -318,12 +318,12 @@ tracking.get('/dashboard', async (c) => {
       ]),
     db('transfer_cartons')
       .leftJoin('transfer_orders', 'transfer_cartons.transfer_no', 'transfer_orders.transfer_no')
-      .whereIn('transfer_orders.status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
+      .whereIn('transfer_orders.status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED'])
       .count('* as count')
       .first(),
-    db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('to_warehouse').count('* as count').groupBy('to_warehouse'),
-    db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('transport_type').count('* as count').groupBy('transport_type'),
-    db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('logistics_carrier').count('* as count').groupBy('logistics_carrier'),
+    db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED']).select('to_warehouse').count('* as count').groupBy('to_warehouse'),
+    db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED']).select('transport_type').count('* as count').groupBy('transport_type'),
+    db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED']).select('logistics_carrier').count('* as count').groupBy('logistics_carrier'),
     db('transfer_orders').where('status', 'RECEIVED').where('logistics_sign_time', '>=', sevenDaysAgo.toISOString()).select('logistics_sign_time'),
   ]);
 
@@ -410,7 +410,7 @@ tracking.get('/export', async (c) => {
   const team = c.req.query('team');
   const abnormal = c.req.query('abnormal');
 
-  let query = db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']);
+  let query = db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED']);
 
   if (fromWarehouse) query = query.where('from_warehouse', fromWarehouse);
   if (toWarehouse) query = query.where('to_warehouse', toWarehouse);
@@ -541,6 +541,7 @@ tracking.get('/export', async (c) => {
           'overseas_sku_code',
           'expected_qty',
           'outbound_qty',
+          'shelf_qty',
         ])
     : [];
 
@@ -573,23 +574,26 @@ tracking.get('/export', async (c) => {
     '海外仓SKU',
     '计划数量',
     '实际发货数量',
+    '上架数量',
     '状态',
+    '上架情况',
     '发货仓',
     '目的仓',
     '团队',
     '运输类型',
     '运输时效要求(天)',
+    '时效是否达标',
     '运单号',
-    '发货日期(北京)',
+    '发货日期',
     '离港时间',
     '到港时间',
     '清关时间',
     '尾程提取时间',
-    '签收日期',
+    '到仓日期',
     '卸货时间',
     '上架时间',
-    '签出-签收时效(天)',
-    '签收-上架时效(天)',
+    '出库-到仓时效(天)',
+    '出库-上架时效(天)',
     '卸货-上架时效(天)',
     '预计上架时间',
     '上架数量差异',
@@ -597,12 +601,9 @@ tracking.get('/export', async (c) => {
     '物流异常备注',
     '延迟说明',
     '是否查验',
-    '是否3天内上架',
-    '单箱是否11天内',
-    '单箱是否7天内',
-    '单箱是否4天内',
-    '尾程',
     '尾程渠道分类',
+    '发货日期年份',
+    '发货日期月份',
   ];
 
   const sheetData: any[][] = [];
@@ -611,142 +612,124 @@ tracking.get('/export', async (c) => {
     const orderCartons = cartonsByOrder[order.transfer_no] || [];
     const oItems = orderItemsByOrder[order.transfer_no] || [];
 
-    if (orderCartons.length > 0) {
-      for (const ctn of orderCartons) {
-        const items = cartonItemsByCarton[ctn.carton_no] || [{}];
-        for (const item of items) {
-          const inboundCartonKey = `${order.inbound_order_no}+${ctn.carton_no}`;
+    const orderItemBySku: Record<string, any> = {};
+    for (const oi of oItems) {
+      orderItemBySku[oi.sku_code] = oi;
+    }
 
-          let checkoutToSignDays: number | null = null;
-          if (ctn.departure_time && ctn.logistics_sign_time) {
-            checkoutToSignDays = Math.round((new Date(ctn.logistics_sign_time).getTime() - new Date(ctn.departure_time).getTime()) / 86400000 * 100) / 100;
-          }
+    const allShelved = oItems.length > 0 && oItems.every((i: any) => (i.shelf_qty || 0) >= (i.outbound_qty || i.expected_qty || 0));
+    const noneShelved = oItems.length > 0 && oItems.every((i: any) => (i.shelf_qty || 0) === 0);
+    let shelfStatus = '未上架';
+    if (allShelved) shelfStatus = '已上架';
+    else if (!noneShelved) shelfStatus = '部分上架';
 
-          let signToShelfDays: number | null = null;
-          if (ctn.logistics_sign_time && ctn.shelf_time) {
-            signToShelfDays = Math.round((new Date(ctn.shelf_time).getTime() - new Date(ctn.logistics_sign_time).getTime()) / 86400000 * 100) / 100;
-          }
+    const slaDays = order.timeline_requirement_days || computeSlaDays(order.to_warehouse, order.transport_type, slaRules, warehouseIdMap);
+    let isSlaMet = '';
+    if (order.departure_time && order.logistics_sign_time) {
+      const outboundToArrivalDays = Math.round((new Date(order.logistics_sign_time).getTime() - new Date(order.departure_time).getTime()) / 86400000 * 100) / 100;
+      isSlaMet = outboundToArrivalDays <= slaDays ? '是' : '否';
+    }
 
-          let unloadToShelfDays: number | null = null;
-          if (ctn.unload_time && ctn.shelf_time) {
-            unloadToShelfDays = Math.round((new Date(ctn.shelf_time).getTime() - new Date(ctn.unload_time).getTime()) / 86400000 * 100) / 100;
-          }
+    const pickupDate = order.pickup_time;
+    const pickupYear = pickupDate ? new Date(pickupDate).getFullYear() : '';
+    const pickupMonth = pickupDate ? (new Date(pickupDate).getMonth() + 1) : '';
 
-          sheetData.push([
-            order.inbound_order_no,
-            order.transfer_no,
-            inboundCartonKey,
-            ctn.carton_no,
-            item.sku_code || '',
-            item.overseas_sku_code || '',
-            item.qty || 0,
-            item.qty || 0,
-            order.status,
-            order.from_warehouse,
-            order.to_warehouse,
-            order.team,
-            order.transport_type,
-            order.timeline_requirement_days,
-            order.logistics_tracking_no,
-            ctn.logistics_sign_time || order.logistics_sign_time,
-            ctn.departure_time || order.departure_time,
-            ctn.arrival_port_time || order.arrival_port_time,
-            ctn.customs_clearance_time || order.customs_clearance_time,
-            ctn.last_mile_pickup_time || order.last_mile_pickup_time,
-            ctn.logistics_sign_time || order.logistics_sign_time,
-            ctn.unload_time || order.unload_time,
-            ctn.shelf_time || order.shelf_time,
-            checkoutToSignDays ?? ctn.checkout_to_sign_days ?? '',
-            signToShelfDays ?? ctn.sign_to_shelf_days ?? '',
-            unloadToShelfDays ?? ctn.unload_to_shelf_days ?? '',
-            order.expected_arrival_date || '',
-            order.expected_shelf_date || '',
-            '',
-            order.is_logistics_abnormal ? '是' : '否',
-            order.logistics_abnormal_remark || '',
-            order.delay_explanation || '',
-            order.is_inspected ? '是' : '否',
-            ctn.is_shelf_within_3days ? '是' : (signToShelfDays !== null ? (signToShelfDays <= 3 ? '是' : '否') : ''),
-            ctn.is_carton_within_11days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 11 ? '是' : '否') : ''),
-            ctn.is_carton_within_7days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 7 ? '是' : '否') : ''),
-            ctn.is_carton_within_4days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 4 ? '是' : '否') : ''),
-            order.last_mile_type || '',
-            order.last_mile_channel || '',
-          ]);
-        }
+    const buildRow = (skuCode: string, overseasSku: string, cartonNo: string, expectedQty: number, outboundQty: number) => {
+      const oi = orderItemBySku[skuCode];
+      const shelfQty = oi ? (oi.shelf_qty || 0) : 0;
+      const actualOutbound = outboundQty || (oi ? (oi.outbound_qty || 0) : 0);
+      const actualExpected = expectedQty || (oi ? (oi.expected_qty || 0) : 0);
+      const shelfDiff = shelfQty - actualOutbound;
+
+      const inboundCartonKey = cartonNo ? `${order.inbound_order_no}+${cartonNo}` : order.inbound_order_no;
+
+      const departTime = order.departure_time;
+      const signTime = order.logistics_sign_time;
+      const unloadTime = order.unload_time;
+      const shelfTime = order.shelf_time;
+
+      let outboundToArrivalDays: number | string = '';
+      if (departTime && signTime) {
+        outboundToArrivalDays = Math.round((new Date(signTime).getTime() - new Date(departTime).getTime()) / 86400000 * 100) / 100;
       }
-    } else if (oItems.length > 0) {
-      for (const oi of oItems) {
-        sheetData.push([
-          order.inbound_order_no,
-          order.transfer_no,
-          order.inbound_order_no,
-          '',
-          oi.sku_code || '',
-          oi.overseas_sku_code || '',
-          oi.expected_qty || 0,
-          oi.outbound_qty || 0,
-          order.status,
-          order.from_warehouse,
-          order.to_warehouse,
-          order.team,
-          order.transport_type,
-          order.timeline_requirement_days,
-          order.logistics_tracking_no,
-          order.logistics_sign_time || '',
-          order.departure_time || '',
-          order.arrival_port_time || '',
-          order.customs_clearance_time || '',
-          order.last_mile_pickup_time || '',
-          order.logistics_sign_time || '',
-          order.unload_time || '',
-          order.shelf_time || '',
-          '', '', '', '',
-          order.expected_arrival_date || '',
-          order.expected_shelf_date || '',
-          '',
-          order.is_logistics_abnormal ? '是' : '否',
-          order.logistics_abnormal_remark || '',
-          order.delay_explanation || '',
-          order.is_inspected ? '是' : '否',
-          '', '', '', '',
-          order.last_mile_type || '',
-          order.last_mile_channel || '',
-        ]);
+
+      let outboundToShelfDays: number | string = '';
+      if (departTime && shelfTime) {
+        outboundToShelfDays = Math.round((new Date(shelfTime).getTime() - new Date(departTime).getTime()) / 86400000 * 100) / 100;
       }
-    } else {
-      sheetData.push([
+
+      let unloadToShelfDays: number | string = '';
+      if (unloadTime && shelfTime) {
+        unloadToShelfDays = Math.round((new Date(shelfTime).getTime() - new Date(unloadTime).getTime()) / 86400000 * 100) / 100;
+      }
+
+      return [
         order.inbound_order_no,
         order.transfer_no,
-        order.inbound_order_no,
-        '', '', '', '', '',
+        inboundCartonKey,
+        cartonNo || '',
+        skuCode || '',
+        overseasSku || '',
+        actualExpected,
+        actualOutbound,
+        shelfQty,
         order.status,
+        shelfStatus,
         order.from_warehouse,
         order.to_warehouse,
         order.team,
         order.transport_type,
-        order.timeline_requirement_days,
-        order.logistics_tracking_no,
-        order.logistics_sign_time || '',
-        order.departure_time || '',
+        order.timeline_requirement_days || '',
+        isSlaMet,
+        order.logistics_tracking_no || '',
+        order.pickup_time || '',
+        departTime || '',
         order.arrival_port_time || '',
         order.customs_clearance_time || '',
         order.last_mile_pickup_time || '',
-        order.logistics_sign_time || '',
-        order.unload_time || '',
-        order.shelf_time || '',
-        '', '', '', '',
-        order.expected_arrival_date || '',
+        signTime || '',
+        unloadTime || '',
+        shelfTime || '',
+        outboundToArrivalDays,
+        outboundToShelfDays,
+        unloadToShelfDays,
         order.expected_shelf_date || '',
-        '',
+        shelfDiff,
         order.is_logistics_abnormal ? '是' : '否',
         order.logistics_abnormal_remark || '',
         order.delay_explanation || '',
         order.is_inspected ? '是' : '否',
-        '', '', '', '',
-        order.last_mile_type || '',
         order.last_mile_channel || '',
-      ]);
+        pickupYear,
+        pickupMonth,
+      ];
+    };
+
+    if (orderCartons.length > 0) {
+      for (const ctn of orderCartons) {
+        const items = cartonItemsByCarton[ctn.carton_no] || [{}];
+        for (const item of items) {
+          sheetData.push(buildRow(
+            item.sku_code || '',
+            item.overseas_sku_code || '',
+            ctn.carton_no,
+            item.qty || 0,
+            item.qty || 0,
+          ));
+        }
+      }
+    } else if (oItems.length > 0) {
+      for (const oi of oItems) {
+        sheetData.push(buildRow(
+          oi.sku_code || '',
+          oi.overseas_sku_code || '',
+          '',
+          oi.expected_qty || 0,
+          oi.outbound_qty || 0,
+        ));
+      }
+    } else {
+      sheetData.push(buildRow('', '', '', 0, 0));
     }
   }
 
@@ -772,7 +755,7 @@ tracking.post('/sla-check', async (c) => {
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
 
   const inTransitOrders = await db('transfer_orders')
-    .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
+    .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED'])
     .select([
       'id',
       'status',

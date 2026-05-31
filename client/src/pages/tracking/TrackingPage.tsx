@@ -52,7 +52,7 @@ interface Warehouse {
 const TRANSPORT_OPTIONS: TransportType[] = ['SEA', 'AIR', 'RAIL', 'TRUCK', 'EXPRESS', 'FAST_SEA', 'SPECIAL'];
 
 const STATUS_OPTIONS: TransferStatus[] = [
-  'PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED', 'COMPLETED', 'CANCELLED',
+  'PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED', 'COMPLETED', 'CANCELLED',
 ];
 
 const ABNORMAL_OPTIONS = [
@@ -264,6 +264,7 @@ export default function TrackingPage() {
         if (s === 'OUTBOUNDED') return <Badge variant="shipped">已出库</Badge>;
         if (s === 'IN_TRANSIT') return <Badge variant="transit">在途</Badge>;
         if (s === 'RECEIVED') return <Badge variant="received">已到仓</Badge>;
+        if (s === 'PARTIAL_SHELVED') return <Badge variant="partial_shelved">部分上架</Badge>;
         if (s === 'SHELVED') return <Badge variant="shelved">已上架</Badge>;
         return <Badge variant="pending">{s}</Badge>;
       },

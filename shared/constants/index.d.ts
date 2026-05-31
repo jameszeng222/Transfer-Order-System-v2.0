@@ -3,13 +3,14 @@ export declare const TransferStatus: {
     readonly OUTBOUNDED: "OUTBOUNDED";
     readonly IN_TRANSIT: "IN_TRANSIT";
     readonly RECEIVED: "RECEIVED";
+    readonly PARTIAL_SHELVED: "PARTIAL_SHELVED";
     readonly SHELVED: "SHELVED";
     readonly COMPLETED: "COMPLETED";
     readonly CANCELLED: "CANCELLED";
 };
 export type TransferStatus = (typeof TransferStatus)[keyof typeof TransferStatus];
 export declare const TransferStatusLabel: Record<TransferStatus, string>;
-export type BadgeVariant = 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'complete';
+export type BadgeVariant = 'pending' | 'shipped' | 'received' | 'transit' | 'abnormal' | 'shelved' | 'partial_shelved' | 'complete';
 export declare const StatusBadgeMap: Record<TransferStatus, BadgeVariant>;
 export declare const TransferType: {
     readonly DOMESTIC_TO_OVERSEAS: "DOMESTIC_TO_OVERSEAS";
