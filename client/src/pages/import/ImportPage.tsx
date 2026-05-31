@@ -5,7 +5,7 @@ import { api } from '../../api/client';
 
 import { API_BASE } from '../../api/client';
 
-interface RowError { row: number; message: string; }
+interface RowError { row: number; message: string; inbound_order_no?: string; }
 interface ImportResult { total: number; success: number; failed: number; errors: RowError[]; createdOrders: number; updatedOrders: number; }
 interface ImportHistory { time: string; type: string; filename: string; success: number; failed: number; operator: string; }
 
@@ -179,6 +179,7 @@ export default function ImportPage() {
                     <thead>
                       <tr className="bg-bg">
                         <th className="text-left px-4 py-2.5 font-medium text-xs text-text-tertiary">行号</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-xs text-text-tertiary">入库单号</th>
                         <th className="text-left px-4 py-2.5 font-medium text-xs text-text-tertiary">错误信息</th>
                       </tr>
                     </thead>
@@ -186,6 +187,7 @@ export default function ImportPage() {
                       {result.errors.map((err, idx) => (
                         <tr key={idx} className="border-t border-border-light">
                           <td className="px-4 py-2.5 text-text-secondary tabular-nums">{err.row}</td>
+                          <td className="px-4 py-2.5 text-text-secondary">{err.inbound_order_no || '--'}</td>
                           <td className="px-4 py-2.5 text-text-primary">{err.message}</td>
                         </tr>
                       ))}
@@ -223,7 +225,7 @@ export default function ImportPage() {
               ) : (
                 history.map((row, idx) => (
                   <tr key={idx} className={idx < history.length - 1 ? 'border-b border-border-light' : ''}>
-                    <td className="px-4 py-2.5 text-text-secondary">{row.time}</td>
+                    <td className="px-4 py-2.5 text-text-secondary">{row.time ? new Date(row.time).toLocaleString('zh-CN') : '--'}</td>
                     <td className="px-4 py-2.5 text-text-secondary">{row.type}</td>
                     <td className="px-4 py-2.5 text-text-secondary">{row.filename}</td>
                     <td className="px-4 py-2.5 text-green">{row.success}</td>

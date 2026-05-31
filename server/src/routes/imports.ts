@@ -213,7 +213,7 @@ imports.get('/history', async (c) => {
   };
 
   const history = data.map((row: any) => ({
-    time: row.change_time ? new Date(row.change_time).toLocaleString('zh-CN') : '--',
+    time: row.change_time || null,
     type: TYPE_LABELS[row.field_name] || row.field_name,
     filename: row.old_value || '--',
     success: parseInt(String(row.new_value || '0').split('/')[0]) || 0,

@@ -138,6 +138,7 @@ const CARTON_LEVEL_FIELDS = [
 interface RowError {
   row: number;
   message: string;
+  inbound_order_no?: string;
 }
 
 interface ParsedRow {
@@ -616,7 +617,7 @@ export async function importExcel(buffer: ArrayBuffer, operator: string): Promis
 
   for (const row of parsedRows) {
     if (!hasValue(row.inbound_order_no)) {
-      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号' });
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号', inbound_order_no: undefined });
     } else {
       validRows.push(row);
     }
@@ -641,7 +642,7 @@ export async function importExcel(buffer: ArrayBuffer, operator: string): Promis
         else updatedOrders++;
       } catch (err: any) {
         for (const row of groupRows) {
-          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 导入失败: ${err.message}` });
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 导入失败: ${err.message}`, inbound_order_no: inboundOrderNo });
         }
       }
     }
@@ -691,9 +692,9 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
 
   for (const row of parsedRows) {
     if (!row.inbound_order_no || !row.sku_code || row.inbound_qty === undefined || row.inbound_qty === '') {
-      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号/SKU编码/实际入库数量' });
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号/SKU编码/实际入库数量', inbound_order_no: row.inbound_order_no || undefined });
     } else if (isNaN(Number(row.inbound_qty))) {
-      errors.push({ row: row._rowIndex, message: '数量格式错误: 实际入库数量' });
+      errors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 数量格式错误: 实际入库数量`, inbound_order_no: String(row.inbound_order_no) });
     } else {
       row.inbound_qty = Math.round(Number(row.inbound_qty));
       validRows.push(row);
@@ -736,7 +737,7 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
         const order = orderMap.get(inboundOrderNo);
         if (!order) {
           for (const row of groupRows) {
-            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
+            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单`, inbound_order_no: inboundOrderNo });
           }
           continue;
         }
@@ -749,7 +750,7 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
           const itemKey = `${order.transfer_no}:${String(row.sku_code)}`;
           const item = itemMap.get(itemKey);
           if (!item) {
-            orderErrors.push({ row: row._rowIndex, message: `SKU ${row.sku_code} 在调拨单 ${order.transfer_no} 中不存在` });
+            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} SKU ${row.sku_code} 在调拨单 ${order.transfer_no} 中不存在`, inbound_order_no: inboundOrderNo });
             continue;
           }
 
@@ -833,7 +834,7 @@ export async function importInboundReturn(buffer: ArrayBuffer, operator: string)
         updatedOrders++;
       } catch (err: any) {
         for (const row of groupRows) {
-          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 入库回传失败: ${err.message}` });
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 入库回传失败: ${err.message}`, inbound_order_no: inboundOrderNo });
         }
       }
     }
@@ -910,7 +911,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
 
   for (const row of parsedRows) {
     if (!row.inbound_order_no) {
-      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号' });
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号', inbound_order_no: undefined });
     } else {
       validRows.push(row);
     }
@@ -959,7 +960,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
         const order = orderMap.get(inboundOrderNo);
         if (!order) {
           for (const row of groupRows) {
-            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单` });
+            orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 未找到对应调拨单`, inbound_order_no: inboundOrderNo });
           }
           continue;
         }
@@ -1061,7 +1062,7 @@ export async function importLogisticsMerged(buffer: ArrayBuffer, operator: strin
         updatedOrders++;
       } catch (err: any) {
         for (const row of groupRows) {
-          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 物流信息导入失败: ${err.message}` });
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${inboundOrderNo} 物流信息导入失败: ${err.message}`, inbound_order_no: inboundOrderNo });
         }
       }
     }
@@ -1097,7 +1098,7 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
 
   for (const row of parsedRows) {
     if (!row.inbound_order_no) {
-      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号' });
+      errors.push({ row: row._rowIndex, message: '必填字段缺失: 第三方入库单号', inbound_order_no: undefined });
     } else {
       validRows.push(row);
     }
@@ -1128,7 +1129,7 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
       try {
         const order = orderMap.get(String(row.inbound_order_no));
         if (!order) {
-          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 未找到对应调拨单` });
+          orderErrors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 未找到对应调拨单`, inbound_order_no: String(row.inbound_order_no) });
           continue;
         }
 
@@ -1226,7 +1227,7 @@ export async function processFreightImport(buffer: ArrayBuffer, operator: string
           createdBills++;
         }
       } catch (err: any) {
-        orderErrors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 运费导入失败: ${err.message}` });
+        orderErrors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 运费导入失败: ${err.message}`, inbound_order_no: String(row.inbound_order_no) });
       }
     }
 
