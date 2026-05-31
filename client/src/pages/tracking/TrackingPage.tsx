@@ -39,7 +39,8 @@ interface InTransitRow {
   logistics_abnormal_type: string;
   latest_event: string;
   shelf_time: string;
-  carton_items: { carton_no: string; system_sku: string; overseas_sku: string; qty: number; outbound_qty: number }[];
+  carton_items: { carton_no: string | null; system_sku: string; overseas_sku: string; qty: number }[];
+  carton_outbound_qty: number;
 }
 
 interface Warehouse {
@@ -291,10 +292,7 @@ export default function TrackingPage() {
       key: 'outbound_qty',
       title: '实发数量',
       render: (_, row) => {
-        const items = row.carton_items as InTransitRow['carton_items'];
-        if (!items || items.length === 0) return '--';
-        const total = items.reduce((sum, i) => sum + (i.outbound_qty || i.qty || 0), 0);
-        return <span>{total}</span>;
+        return <span>{row.carton_outbound_qty ? String(row.carton_outbound_qty) : '--'}</span>;
       },
     },
     { key: 'from_warehouse', title: '发货仓' },

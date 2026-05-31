@@ -197,13 +197,11 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
 
   const transferNos = enriched.map((r: any) => r.transfer_no);
   let cartonItems: any[] = [];
+  let orderItems: any[] = [];
   if (transferNos.length > 0) {
     cartonItems = await db('transfer_carton_items as ci')
       .leftJoin('transfer_cartons as ct', function () {
         this.on('ci.carton_no', 'ct.carton_no').andOn('ci.transfer_no', 'ct.transfer_no');
-      })
-      .leftJoin('transfer_order_items as oi', function () {
-        this.on('oi.transfer_no', 'ci.transfer_no').andOn('oi.sku_code', 'ci.sku_code');
       })
       .whereIn('ci.transfer_no', transferNos)
       .select([
@@ -212,18 +210,51 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
         'ci.sku_code as system_sku',
         'ci.overseas_sku_code as overseas_sku',
         'ci.qty',
-        'oi.outbound_qty',
+      ]);
+
+    orderItems = await db('transfer_order_items')
+      .whereIn('transfer_no', transferNos)
+      .select([
+        'transfer_no',
+        'sku_code as system_sku',
+        'overseas_sku_code as overseas_sku',
+        'expected_qty',
+        'outbound_qty',
       ]);
   }
 
-  const itemsByOrder: Record<string, any[]> = {};
+  const cartonItemsByOrder: Record<string, any[]> = {};
   for (const ci of cartonItems) {
-    if (!itemsByOrder[ci.transfer_no]) itemsByOrder[ci.transfer_no] = [];
-    itemsByOrder[ci.transfer_no].push(ci);
+    if (!cartonItemsByOrder[ci.transfer_no]) cartonItemsByOrder[ci.transfer_no] = [];
+    cartonItemsByOrder[ci.transfer_no].push(ci);
+  }
+
+  const orderItemsByOrder: Record<string, any[]> = {};
+  for (const oi of orderItems) {
+    if (!orderItemsByOrder[oi.transfer_no]) orderItemsByOrder[oi.transfer_no] = [];
+    orderItemsByOrder[oi.transfer_no].push(oi);
   }
 
   for (const row of enriched) {
-    row.carton_items = itemsByOrder[row.transfer_no] || [];
+    const ci = cartonItemsByOrder[row.transfer_no] || [];
+    const oi = orderItemsByOrder[row.transfer_no] || [];
+    if (ci.length > 0) {
+      row.carton_items = ci;
+      const outboundTotal = oi.reduce((sum: number, i: any) => sum + (Number(i.outbound_qty) || 0), 0);
+      const expectedTotal = oi.reduce((sum: number, i: any) => sum + (Number(i.expected_qty) || 0), 0);
+      row.carton_outbound_qty = outboundTotal || expectedTotal;
+    } else {
+      row.carton_items = oi.map((i: any) => ({
+        transfer_no: i.transfer_no,
+        carton_no: null,
+        system_sku: i.system_sku,
+        overseas_sku: i.overseas_sku,
+        qty: i.expected_qty,
+      }));
+      const outboundTotal = oi.reduce((sum: number, i: any) => sum + (Number(i.outbound_qty) || 0), 0);
+      const expectedTotal = oi.reduce((sum: number, i: any) => sum + (Number(i.expected_qty) || 0), 0);
+      row.carton_outbound_qty = outboundTotal || expectedTotal;
+    }
   }
 
   const filtered = isTimeout !== undefined && isTimeout !== ''
