@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, RotateCcw, Upload, Download } from 'lucide-react';
-import { api, API_BASE } from '../../api/client';
+import { api } from '../../api/client';
 import { TransferStatusLabel, TransportTypeLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
 import { Button, Card, FormField, Table, Badge, Pagination, TimeFilterPanel } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
+import { useExportStore } from '../../store/exportStore';
 
 interface OrderRow {
   transfer_no: string;
@@ -184,7 +185,9 @@ export default function OrderListPage() {
     setSelectedKeys(new Set());
   }, []);
 
-  const handleExport = useCallback(async () => {
+  const { startExport } = useExportStore();
+
+  const handleExport = useCallback(() => {
     const params = new URLSearchParams();
     if (filters.keyword) params.set('keyword', filters.keyword);
     if (filters.status) params.set('status', filters.status);
@@ -193,17 +196,8 @@ export default function OrderListPage() {
     if (filters.team) params.set('team', filters.team);
     if (filters.abnormal) params.set('abnormal', filters.abnormal);
     if (selectedKeys.size > 0) params.set('transfer_nos', Array.from(selectedKeys).join(','));
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${API_BASE}/orders/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = '调拨单列表.xlsx';
-    a.click();
-    window.URL.revokeObjectURL(url);
-  }, [filters, selectedKeys]);
+    startExport('orders', params);
+  }, [filters, selectedKeys, startExport]);
 
   const handleStatusChange = async (transferNo: string, newStatus: TransferStatus) => {
     const label = NEXT_STATUS_LABELS[newStatus] || newStatus;

@@ -15,6 +15,7 @@ import {
   Database,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import ExportCenter from './ExportCenter';
 
 interface MenuItem {
   label: string;
@@ -133,6 +134,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <header className="h-14 bg-bg-card border-b border-border sticky top-0 flex items-center justify-between px-6 shrink-0 z-10">
           <h2 className="text-[15px] font-semibold text-text-primary">{currentTitle}</h2>
           <div className="flex items-center gap-4">
+            <ExportCenter />
             <span className="text-[13px] text-text-secondary">{user?.name || user?.username}</span>
             <button
               onClick={handleLogout}

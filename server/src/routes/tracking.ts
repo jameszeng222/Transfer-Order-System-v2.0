@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { requirePermission } from '../middleware/auth.js';
 import { applyTimeRangeFilters } from '../utils/queryHelpers.js';
 import XLSX from 'xlsx';
+import { createTask, getTask, updateProgress, completeTask, failTask, cleanOldTasks } from '../services/exportTaskManager.js';
 
 const tracking = new Hono();
 
@@ -398,345 +399,258 @@ tracking.get('/dashboard', async (c) => {
   });
 });
 
-tracking.get('/export', async (c) => {
+tracking.post('/export', async (c) => {
   if (!await requirePermission(c, 'tracking.export')) {
     return c.json({ success: false, error: '无权限' }, 403);
   }
-  const fromWarehouse = c.req.query('from_warehouse');
-  const toWarehouse = c.req.query('to_warehouse');
-  const transportType = c.req.query('transport_type');
-  const isTimeout = c.req.query('is_timeout');
-  const logisticsCarrier = c.req.query('logistics_carrier');
-  const team = c.req.query('team');
-  const abnormal = c.req.query('abnormal');
 
-  let query = db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED']);
+  const params = new URL(c.req.url).searchParams;
+  const fromWarehouse = params.get('from_warehouse');
+  const toWarehouse = params.get('to_warehouse');
+  const transportType = params.get('transport_type');
+  const isTimeout = params.get('is_timeout');
+  const logisticsCarrier = params.get('logistics_carrier');
+  const team = params.get('team');
+  const abnormal = params.get('abnormal');
+  const transferNosParam = params.get('transfer_nos');
 
-  if (fromWarehouse) query = query.where('from_warehouse', fromWarehouse);
-  if (toWarehouse) query = query.where('to_warehouse', toWarehouse);
-  if (transportType) query = query.where('transport_type', transportType);
-  if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
-  if (team) query = query.where('team', team);
-  if (abnormal) {
-    if (abnormal === 'logistics') {
-      query = query.where('is_logistics_abnormal', 1);
-    } else if (abnormal === 'timeout') {
-      query = query.whereNotNull('expected_arrival_date')
-        .where('expected_arrival_date', '<', new Date().toISOString().slice(0, 10))
-        .whereNull('logistics_sign_time');
-    }
-  }
+  const task = createTask('tracking', '在途明细.xlsx');
+  cleanOldTasks();
 
-  const transferNosParam = c.req.query('transfer_nos');
-  if (transferNosParam) {
-    const transferNos = transferNosParam.split(',').filter(Boolean);
-    query = query.whereIn('transfer_no', transferNos);
-  }
+  (async () => {
+    try {
+      updateProgress(task.id, 10, 100);
 
-  const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
-
-  const orders = await query.clone().select([
-    'transfer_orders.id',
-    'transfer_orders.transfer_no',
-    'transfer_orders.inbound_order_no',
-    'transfer_orders.from_warehouse',
-    'transfer_orders.to_warehouse',
-    'transfer_orders.status',
-    'transfer_orders.transport_type',
-    'transfer_orders.logistics_carrier',
-    'transfer_orders.logistics_tracking_no',
-    'transfer_orders.team',
-    'transfer_orders.total_sku_count',
-    'transfer_orders.total_qty',
-    'transfer_orders.total_carton_count',
-    'transfer_orders.pickup_time',
-    'transfer_orders.departure_time',
-    'transfer_orders.arrival_port_time',
-    'transfer_orders.customs_clearance_time',
-    'transfer_orders.last_mile_pickup_time',
-    'transfer_orders.logistics_sign_time',
-    'transfer_orders.unload_time',
-    'transfer_orders.shelf_time',
-    'transfer_orders.is_customs_declared',
-    'transfer_orders.is_inspected',
-    'transfer_orders.timeline_requirement_days',
-    'transfer_orders.expected_arrival_date',
-    'transfer_orders.expected_shelf_date',
-    'transfer_orders.is_logistics_abnormal',
-    'transfer_orders.logistics_abnormal_type',
-    'transfer_orders.logistics_abnormal_remark',
-    'transfer_orders.is_shelf_abnormal',
-    'transfer_orders.shelf_abnormal_type',
-    'transfer_orders.delay_explanation',
-    'transfer_orders.last_mile_channel',
-    'transfer_orders.remark',
-  ]);
-
-  const orderTimeoutMap: Record<string, boolean> = {};
-  for (const o of orders) {
-    const slaDays = computeSlaDays(o.to_warehouse, o.transport_type, slaRules, warehouseIdMap);
-    const remainingDays = computeRemainingDays(o.pickup_time, slaDays);
-    orderTimeoutMap[o.transfer_no] = remainingDays !== null && remainingDays <= 0;
-  }
-
-  const filteredTransferNos = isTimeout !== undefined && isTimeout !== ''
-    ? orders.filter((o: any) => {
-        const timeout = orderTimeoutMap[o.transfer_no];
-        if (isTimeout === 'true') return timeout;
-        return !timeout;
-      }).map((o: any) => o.transfer_no)
-    : orders.map((o: any) => o.transfer_no);
-
-  const filteredOrders = isTimeout !== undefined && isTimeout !== ''
-    ? orders.filter((o: any) => filteredTransferNos.includes(o.transfer_no))
-    : orders;
-
-  const cartons = filteredTransferNos.length > 0
-    ? await db('transfer_cartons')
-        .whereIn('transfer_no', filteredTransferNos)
-        .select([
-          'id',
-          'transfer_no',
-          'carton_no',
-          'departure_time',
-          'arrival_port_time',
-          'customs_clearance_time',
-          'last_mile_pickup_time',
-          'logistics_sign_time',
-          'unload_time',
-          'shelf_time',
-          'unload_to_shelf_days',
-        ])
-    : [];
-
-  const cartonItems = filteredTransferNos.length > 0
-    ? await db('transfer_carton_items')
-        .whereIn('transfer_no', filteredTransferNos)
-        .select([
-          'id',
-          'transfer_no',
-          'carton_no',
-          'sku_code',
-          'sku_name',
-          'overseas_sku_code',
-          'qty',
-        ])
-    : [];
-
-  const orderItems = filteredTransferNos.length > 0
-    ? await db('transfer_order_items')
-        .whereIn('transfer_no', filteredTransferNos)
-        .select([
-          'id',
-          'transfer_no',
-          'sku_code',
-          'sku_name',
-          'overseas_sku_code',
-          'expected_qty',
-          'outbound_qty',
-          'shelf_qty',
-        ])
-    : [];
-
-  const cartonItemsByCarton: Record<string, any[]> = {};
-  for (const ci of cartonItems) {
-    if (!cartonItemsByCarton[ci.carton_no]) {
-      cartonItemsByCarton[ci.carton_no] = [];
-    }
-    cartonItemsByCarton[ci.carton_no].push(ci);
-  }
-
-  const cartonsByOrder: Record<string, any[]> = {};
-  for (const ctn of cartons) {
-    if (!cartonsByOrder[ctn.transfer_no]) cartonsByOrder[ctn.transfer_no] = [];
-    cartonsByOrder[ctn.transfer_no].push(ctn);
-  }
-
-  const orderItemsByOrder: Record<string, any[]> = {};
-  for (const oi of orderItems) {
-    if (!orderItemsByOrder[oi.transfer_no]) orderItemsByOrder[oi.transfer_no] = [];
-    orderItemsByOrder[oi.transfer_no].push(oi);
-  }
-
-  const headers = [
-    '第三方入库单号',
-    '调拨单号',
-    '入库单+箱号',
-    '箱号',
-    '系统SKU',
-    '海外仓SKU',
-    '计划数量',
-    '实际发货数量',
-    '上架数量',
-    '状态',
-    '上架情况',
-    '发货仓',
-    '目的仓',
-    '团队',
-    '运输类型',
-    '运输时效要求(天)',
-    '时效是否达标',
-    '运单号',
-    '发货日期',
-    '离港时间',
-    '到港时间',
-    '清关时间',
-    '尾程提取时间',
-    '到仓日期',
-    '卸货时间',
-    '上架时间',
-    '出库-到仓时效(天)',
-    '出库-上架时效(天)',
-    '卸货-上架时效(天)',
-    '预计上架时间',
-    '上架数量差异',
-    '是否物流异常',
-    '物流异常备注',
-    '延迟说明',
-    '是否查验',
-    '尾程渠道分类',
-    '发货日期年份',
-    '发货日期月份',
-  ];
-
-  const sheetData: any[][] = [];
-
-  for (const order of filteredOrders) {
-    const orderCartons = cartonsByOrder[order.transfer_no] || [];
-    const oItems = orderItemsByOrder[order.transfer_no] || [];
-
-    const orderItemBySku: Record<string, any> = {};
-    for (const oi of oItems) {
-      orderItemBySku[oi.sku_code] = oi;
-    }
-
-    const allShelved = oItems.length > 0 && oItems.every((i: any) => (i.shelf_qty || 0) >= (i.outbound_qty || i.expected_qty || 0));
-    const noneShelved = oItems.length > 0 && oItems.every((i: any) => (i.shelf_qty || 0) === 0);
-    let shelfStatus = '未上架';
-    if (allShelved) shelfStatus = '已上架';
-    else if (!noneShelved) shelfStatus = '部分上架';
-
-    const slaDays = order.timeline_requirement_days || computeSlaDays(order.to_warehouse, order.transport_type, slaRules, warehouseIdMap);
-    let isSlaMet = '';
-    if (order.departure_time && order.logistics_sign_time) {
-      const outboundToArrivalDays = Math.round((new Date(order.logistics_sign_time).getTime() - new Date(order.departure_time).getTime()) / 86400000 * 100) / 100;
-      isSlaMet = outboundToArrivalDays <= slaDays ? '是' : '否';
-    }
-
-    const pickupDate = order.pickup_time;
-    const pickupYear = pickupDate ? new Date(pickupDate).getFullYear() : '';
-    const pickupMonth = pickupDate ? (new Date(pickupDate).getMonth() + 1) : '';
-
-    const buildRow = (skuCode: string, overseasSku: string, cartonNo: string, expectedQty: number, outboundQty: number) => {
-      const oi = orderItemBySku[skuCode];
-      const shelfQty = oi ? (oi.shelf_qty || 0) : 0;
-      const actualOutbound = outboundQty || (oi ? (oi.outbound_qty || 0) : 0);
-      const actualExpected = expectedQty || (oi ? (oi.expected_qty || 0) : 0);
-      const shelfDiff = shelfQty - actualOutbound;
-
-      const inboundCartonKey = cartonNo ? `${order.inbound_order_no}+${cartonNo}` : order.inbound_order_no;
-
-      const departTime = order.departure_time;
-      const signTime = order.logistics_sign_time;
-      const unloadTime = order.unload_time;
-      const shelfTime = order.shelf_time;
-
-      let outboundToArrivalDays: number | string = '';
-      if (departTime && signTime) {
-        outboundToArrivalDays = Math.round((new Date(signTime).getTime() - new Date(departTime).getTime()) / 86400000 * 100) / 100;
-      }
-
-      let outboundToShelfDays: number | string = '';
-      if (departTime && shelfTime) {
-        outboundToShelfDays = Math.round((new Date(shelfTime).getTime() - new Date(departTime).getTime()) / 86400000 * 100) / 100;
-      }
-
-      let unloadToShelfDays: number | string = '';
-      if (unloadTime && shelfTime) {
-        unloadToShelfDays = Math.round((new Date(shelfTime).getTime() - new Date(unloadTime).getTime()) / 86400000 * 100) / 100;
-      }
-
-      return [
-        order.inbound_order_no,
-        order.transfer_no,
-        inboundCartonKey,
-        cartonNo || '',
-        skuCode || '',
-        overseasSku || '',
-        actualExpected,
-        actualOutbound,
-        shelfQty,
-        order.status,
-        shelfStatus,
-        order.from_warehouse,
-        order.to_warehouse,
-        order.team,
-        order.transport_type,
-        order.timeline_requirement_days || '',
-        isSlaMet,
-        order.logistics_tracking_no || '',
-        order.pickup_time || '',
-        departTime || '',
-        order.arrival_port_time || '',
-        order.customs_clearance_time || '',
-        order.last_mile_pickup_time || '',
-        signTime || '',
-        unloadTime || '',
-        shelfTime || '',
-        outboundToArrivalDays,
-        outboundToShelfDays,
-        unloadToShelfDays,
-        order.expected_shelf_date || '',
-        shelfDiff,
-        order.is_logistics_abnormal ? '是' : '否',
-        order.logistics_abnormal_remark || '',
-        order.delay_explanation || '',
-        order.is_inspected ? '是' : '否',
-        order.last_mile_channel || '',
-        pickupYear,
-        pickupMonth,
-      ];
-    };
-
-    if (orderCartons.length > 0) {
-      for (const ctn of orderCartons) {
-        const items = cartonItemsByCarton[ctn.carton_no] || [{}];
-        for (const item of items) {
-          sheetData.push(buildRow(
-            item.sku_code || '',
-            item.overseas_sku_code || '',
-            ctn.carton_no,
-            item.qty || 0,
-            item.qty || 0,
-          ));
+      let query = db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'PARTIAL_SHELVED', 'SHELVED']);
+      if (fromWarehouse) query = query.where('from_warehouse', fromWarehouse);
+      if (toWarehouse) query = query.where('to_warehouse', toWarehouse);
+      if (transportType) query = query.where('transport_type', transportType);
+      if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
+      if (team) query = query.where('team', team);
+      if (abnormal) {
+        if (abnormal === 'logistics') {
+          query = query.where('is_logistics_abnormal', 1);
+        } else if (abnormal === 'timeout') {
+          query = query.whereNotNull('expected_arrival_date')
+            .where('expected_arrival_date', '<', new Date().toISOString().slice(0, 10))
+            .whereNull('logistics_sign_time');
         }
       }
-    } else if (oItems.length > 0) {
-      for (const oi of oItems) {
-        sheetData.push(buildRow(
-          oi.sku_code || '',
-          oi.overseas_sku_code || '',
-          '',
-          oi.expected_qty || 0,
-          oi.outbound_qty || 0,
-        ));
+      if (transferNosParam) {
+        const transferNos = transferNosParam.split(',').filter(Boolean);
+        query = query.whereIn('transfer_no', transferNos);
       }
-    } else {
-      sheetData.push(buildRow('', '', '', 0, 0));
+
+      updateProgress(task.id, 20);
+
+      const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
+
+      const orders = await query.clone().select([
+        'transfer_orders.id', 'transfer_orders.transfer_no', 'transfer_orders.inbound_order_no',
+        'transfer_orders.from_warehouse', 'transfer_orders.to_warehouse', 'transfer_orders.status',
+        'transfer_orders.transport_type', 'transfer_orders.logistics_carrier', 'transfer_orders.logistics_tracking_no',
+        'transfer_orders.team', 'transfer_orders.total_sku_count', 'transfer_orders.total_qty',
+        'transfer_orders.total_carton_count', 'transfer_orders.pickup_time', 'transfer_orders.departure_time',
+        'transfer_orders.arrival_port_time', 'transfer_orders.customs_clearance_time',
+        'transfer_orders.last_mile_pickup_time', 'transfer_orders.logistics_sign_time',
+        'transfer_orders.unload_time', 'transfer_orders.shelf_time', 'transfer_orders.is_customs_declared',
+        'transfer_orders.is_inspected', 'transfer_orders.timeline_requirement_days',
+        'transfer_orders.expected_arrival_date', 'transfer_orders.expected_shelf_date',
+        'transfer_orders.is_logistics_abnormal', 'transfer_orders.logistics_abnormal_type',
+        'transfer_orders.logistics_abnormal_remark', 'transfer_orders.is_shelf_abnormal',
+        'transfer_orders.shelf_abnormal_type', 'transfer_orders.delay_explanation',
+        'transfer_orders.last_mile_channel', 'transfer_orders.remark',
+      ]);
+
+      updateProgress(task.id, 40);
+
+      const orderTimeoutMap: Record<string, boolean> = {};
+      for (const o of orders) {
+        const slaDays = computeSlaDays(o.to_warehouse, o.transport_type, slaRules, warehouseIdMap);
+        const remainingDays = computeRemainingDays(o.pickup_time, slaDays);
+        orderTimeoutMap[o.transfer_no] = remainingDays !== null && remainingDays <= 0;
+      }
+
+      const filteredTransferNos = isTimeout !== undefined && isTimeout !== ''
+        ? orders.filter((o: any) => {
+            const timeout = orderTimeoutMap[o.transfer_no];
+            if (isTimeout === 'true') return timeout;
+            return !timeout;
+          }).map((o: any) => o.transfer_no)
+        : orders.map((o: any) => o.transfer_no);
+
+      const filteredOrders = isTimeout !== undefined && isTimeout !== ''
+        ? orders.filter((o: any) => filteredTransferNos.includes(o.transfer_no))
+        : orders;
+
+      const cartons = filteredTransferNos.length > 0
+        ? await db('transfer_cartons').whereIn('transfer_no', filteredTransferNos).select([
+            'id', 'transfer_no', 'carton_no', 'departure_time', 'arrival_port_time',
+            'customs_clearance_time', 'last_mile_pickup_time', 'logistics_sign_time',
+            'unload_time', 'shelf_time', 'unload_to_shelf_days',
+          ])
+        : [];
+
+      const cartonItems = filteredTransferNos.length > 0
+        ? await db('transfer_carton_items').whereIn('transfer_no', filteredTransferNos).select([
+            'id', 'transfer_no', 'carton_no', 'sku_code', 'sku_name', 'overseas_sku_code', 'qty',
+          ])
+        : [];
+
+      const orderItems = filteredTransferNos.length > 0
+        ? await db('transfer_order_items').whereIn('transfer_no', filteredTransferNos).select([
+            'id', 'transfer_no', 'sku_code', 'sku_name', 'overseas_sku_code',
+            'expected_qty', 'outbound_qty', 'shelf_qty',
+          ])
+        : [];
+
+      updateProgress(task.id, 60);
+
+      const cartonItemsByCarton: Record<string, any[]> = {};
+      for (const ci of cartonItems) {
+        if (!cartonItemsByCarton[ci.carton_no]) cartonItemsByCarton[ci.carton_no] = [];
+        cartonItemsByCarton[ci.carton_no].push(ci);
+      }
+      const cartonsByOrder: Record<string, any[]> = {};
+      for (const ctn of cartons) {
+        if (!cartonsByOrder[ctn.transfer_no]) cartonsByOrder[ctn.transfer_no] = [];
+        cartonsByOrder[ctn.transfer_no].push(ctn);
+      }
+      const orderItemsByOrder: Record<string, any[]> = {};
+      for (const oi of orderItems) {
+        if (!orderItemsByOrder[oi.transfer_no]) orderItemsByOrder[oi.transfer_no] = [];
+        orderItemsByOrder[oi.transfer_no].push(oi);
+      }
+
+      const headers = [
+        '第三方入库单号', '调拨单号', '入库单+箱号', '箱号', '系统SKU', '海外仓SKU',
+        '计划数量', '实际发货数量', '上架数量', '状态', '上架情况', '发货仓', '目的仓',
+        '团队', '运输类型', '运输时效要求(天)', '时效是否达标', '运单号', '发货日期',
+        '离港时间', '到港时间', '清关时间', '尾程提取时间', '到仓日期', '卸货时间',
+        '上架时间', '出库-到仓时效(天)', '出库-上架时效(天)', '卸货-上架时效(天)',
+        '预计上架时间', '上架数量差异', '是否物流异常', '物流异常备注', '延迟说明',
+        '是否查验', '尾程渠道分类', '发货日期年份', '发货日期月份',
+      ];
+
+      updateProgress(task.id, 70);
+
+      const sheetData: any[][] = [];
+      for (const order of filteredOrders) {
+        const orderCartons = cartonsByOrder[order.transfer_no] || [];
+        const oItems = orderItemsByOrder[order.transfer_no] || [];
+        const orderItemBySku: Record<string, any> = {};
+        for (const oi of oItems) orderItemBySku[oi.sku_code] = oi;
+
+        const allShelved = oItems.length > 0 && oItems.every((i: any) => (i.shelf_qty || 0) >= (i.outbound_qty || i.expected_qty || 0));
+        const noneShelved = oItems.length > 0 && oItems.every((i: any) => (i.shelf_qty || 0) === 0);
+        let shelfStatus = '未上架';
+        if (allShelved) shelfStatus = '已上架';
+        else if (!noneShelved) shelfStatus = '部分上架';
+
+        const slaDays = order.timeline_requirement_days || computeSlaDays(order.to_warehouse, order.transport_type, slaRules, warehouseIdMap);
+        let isSlaMet = '';
+        if (order.departure_time && order.logistics_sign_time) {
+          const outboundToArrivalDays = Math.round((new Date(order.logistics_sign_time).getTime() - new Date(order.departure_time).getTime()) / 86400000 * 100) / 100;
+          isSlaMet = outboundToArrivalDays <= slaDays ? '是' : '否';
+        }
+        const pickupDate = order.pickup_time;
+        const pickupYear = pickupDate ? new Date(pickupDate).getFullYear() : '';
+        const pickupMonth = pickupDate ? (new Date(pickupDate).getMonth() + 1) : '';
+
+        const buildRow = (skuCode: string, overseasSku: string, cartonNo: string, expectedQty: number, outboundQty: number) => {
+          const oi = orderItemBySku[skuCode];
+          const shelfQty = oi ? (oi.shelf_qty || 0) : 0;
+          const actualOutbound = outboundQty || (oi ? (oi.outbound_qty || 0) : 0);
+          const actualExpected = expectedQty || (oi ? (oi.expected_qty || 0) : 0);
+          const shelfDiff = shelfQty - actualOutbound;
+          const inboundCartonKey = cartonNo ? `${order.inbound_order_no}+${cartonNo}` : order.inbound_order_no;
+          const departTime = order.departure_time;
+          const signTime = order.logistics_sign_time;
+          const unloadTime = order.unload_time;
+          const shelfTime = order.shelf_time;
+          let outboundToArrivalDays: number | string = '';
+          if (departTime && signTime) outboundToArrivalDays = Math.round((new Date(signTime).getTime() - new Date(departTime).getTime()) / 86400000 * 100) / 100;
+          let outboundToShelfDays: number | string = '';
+          if (departTime && shelfTime) outboundToShelfDays = Math.round((new Date(shelfTime).getTime() - new Date(departTime).getTime()) / 86400000 * 100) / 100;
+          let unloadToShelfDays: number | string = '';
+          if (unloadTime && shelfTime) unloadToShelfDays = Math.round((new Date(shelfTime).getTime() - new Date(unloadTime).getTime()) / 86400000 * 100) / 100;
+          return [
+            order.inbound_order_no, order.transfer_no, inboundCartonKey, cartonNo || '',
+            skuCode || '', overseasSku || '', actualExpected, actualOutbound, shelfQty,
+            order.status, shelfStatus, order.from_warehouse, order.to_warehouse, order.team,
+            order.transport_type, order.timeline_requirement_days || '', isSlaMet,
+            order.logistics_tracking_no || '', order.pickup_time || '', departTime || '',
+            order.arrival_port_time || '', order.customs_clearance_time || '',
+            order.last_mile_pickup_time || '', signTime || '', unloadTime || '',
+            shelfTime || '', outboundToArrivalDays, outboundToShelfDays, unloadToShelfDays,
+            order.expected_shelf_date || '', shelfDiff, order.is_logistics_abnormal ? '是' : '否',
+            order.logistics_abnormal_remark || '', order.delay_explanation || '',
+            order.is_inspected ? '是' : '否', order.last_mile_channel || '',
+            pickupYear, pickupMonth,
+          ];
+        };
+
+        if (orderCartons.length > 0) {
+          for (const ctn of orderCartons) {
+            const items = cartonItemsByCarton[ctn.carton_no] || [{}];
+            for (const item of items) {
+              sheetData.push(buildRow(item.sku_code || '', item.overseas_sku_code || '', ctn.carton_no, item.qty || 0, item.qty || 0));
+            }
+          }
+        } else if (oItems.length > 0) {
+          for (const oi of oItems) {
+            sheetData.push(buildRow(oi.sku_code || '', oi.overseas_sku_code || '', '', oi.expected_qty || 0, oi.outbound_qty || 0));
+          }
+        } else {
+          sheetData.push(buildRow('', '', '', 0, 0));
+        }
+      }
+
+      updateProgress(task.id, 85);
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...sheetData]);
+      XLSX.utils.book_append_sheet(wb, ws, '在途明细');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+      updateProgress(task.id, 95);
+      completeTask(task.id, buf);
+    } catch (err: any) {
+      failTask(task.id, err.message || '导出失败');
     }
-  }
+  })();
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...sheetData]);
-  XLSX.utils.book_append_sheet(wb, ws, '在途明细');
+  return c.json({ success: true, data: { taskId: task.id } });
+});
 
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+tracking.get('/export/:taskId/status', async (c) => {
+  const taskId = c.req.param('taskId');
+  const task = getTask(taskId);
+  if (!task) return c.json({ success: false, error: '任务不存在' }, 404);
+  return c.json({
+    success: true,
+    data: {
+      taskId: task.id,
+      type: task.type,
+      fileName: task.fileName,
+      status: task.status,
+      progress: task.progress,
+      total: task.total,
+      error: task.error,
+    },
+  });
+});
 
-  return new Response(buf, {
+tracking.get('/export/:taskId/download', async (c) => {
+  const taskId = c.req.param('taskId');
+  const task = getTask(taskId);
+  if (!task) return c.json({ success: false, error: '任务不存在' }, 404);
+  if (task.status !== 'completed' || !task.buffer) return c.json({ success: false, error: '文件未就绪' }, 400);
+  return new Response(task.buffer, {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename=intransit_export.xlsx',
+      'Content-Disposition': `attachment; filename=${encodeURIComponent(task.fileName)}`,
     },
   });
 });

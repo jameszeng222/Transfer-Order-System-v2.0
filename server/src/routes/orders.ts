@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
 import { applyTimeRangeFilters } from '../utils/queryHelpers.js';
-import { requirePermission } from '../middleware/auth.js';
 import XLSX from 'xlsx';
+import { createTask, getTask, updateProgress, completeTask, failTask, cleanOldTasks } from '../services/exportTaskManager.js';
+import { requirePermission } from '../middleware/auth.js';
 
 const QUANTITY_THRESHOLD_PCT = 0.05;
 const QUANTITY_THRESHOLD_ABS = 5;
@@ -241,121 +242,148 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   });
 });
 
-orders.get('/export', async (c) => {
+orders.post('/export', async (c) => {
   if (!await requirePermission(c, 'order.view')) {
     return c.json({ success: false, error: '无权限' }, 403);
   }
-  const keyword = c.req.query('keyword') || '';
-  const status = c.req.query('status');
-  const fromWarehouse = c.req.query('from_warehouse');
-  const toWarehouse = c.req.query('to_warehouse');
-  const transportType = c.req.query('transport_type');
-  const isLogisticsAbnormal = c.req.query('is_logistics_abnormal');
-  const isShelfAbnormal = c.req.query('is_shelf_abnormal');
-  const isReconciled = c.req.query('is_reconciled');
-  const abnormal = c.req.query('abnormal');
-  const logisticsCarrier = c.req.query('logistics_carrier');
-  const team = c.req.query('team');
 
-  let query = db('transfer_orders');
+  const params = new URL(c.req.url).searchParams;
+  const keyword = params.get('keyword') || '';
+  const status = params.get('status');
+  const fromWarehouse = params.get('from_warehouse');
+  const toWarehouse = params.get('to_warehouse');
+  const transportType = params.get('transport_type');
+  const isLogisticsAbnormal = params.get('is_logistics_abnormal');
+  const isShelfAbnormal = params.get('is_shelf_abnormal');
+  const isReconciled = params.get('is_reconciled');
+  const abnormal = params.get('abnormal');
+  const logisticsCarrier = params.get('logistics_carrier');
+  const team = params.get('team');
+  const transferNosParam = params.get('transfer_nos');
 
-  if (keyword) {
-    query = query.where(function () {
-      this.where('transfer_no', 'like', `%${keyword}%`)
-        .orWhere('inbound_order_no', 'like', `%${keyword}%`);
-    });
-  }
-  if (status) {
-    query = query.where('status', status);
-  }
-  if (fromWarehouse) {
-    query = query.where('from_warehouse', fromWarehouse);
-  }
-  if (toWarehouse) {
-    query = query.where('to_warehouse', toWarehouse);
-  }
-  if (transportType) {
-    query = query.where('transport_type', transportType);
-  }
-  if (isLogisticsAbnormal !== undefined && isLogisticsAbnormal !== '') {
-    query = query.where('is_logistics_abnormal', isLogisticsAbnormal === 'true' ? 1 : 0);
-  }
-  if (isShelfAbnormal !== undefined && isShelfAbnormal !== '') {
-    query = query.where('is_shelf_abnormal', isShelfAbnormal === 'true' ? 1 : 0);
-  }
-  if (isReconciled !== undefined && isReconciled !== '') {
-    query = query.where('is_reconciled', isReconciled === 'true' ? 1 : 0);
-  }
-  if (abnormal) {
-    if (abnormal === 'logistics') {
-      query = query.where('is_logistics_abnormal', 1);
-    } else if (abnormal === 'shelf') {
-      query = query.where('is_shelf_abnormal', 1);
-    } else if (abnormal === 'timeout') {
-      query = query.where('status', 'IN_TRANSIT')
-        .whereNotNull('expected_arrival_date')
-        .where('expected_arrival_date', '<', new Date().toISOString().slice(0, 10))
-        .whereNull('logistics_sign_time');
-    } else if (abnormal === 'any' || abnormal === 'true') {
-      query = query.where(function() {
-        this.where('is_logistics_abnormal', 1).orWhere('is_shelf_abnormal', 1);
-      });
+  const task = createTask('orders', '调拨单列表.xlsx');
+  cleanOldTasks();
+
+  (async () => {
+    try {
+      updateProgress(task.id, 20, 100);
+
+      let query = db('transfer_orders');
+      if (keyword) {
+        query = query.where(function () {
+          this.where('transfer_no', 'like', `%${keyword}%`)
+            .orWhere('inbound_order_no', 'like', `%${keyword}%`);
+        });
+      }
+      if (status) query = query.where('status', status);
+      if (fromWarehouse) query = query.where('from_warehouse', fromWarehouse);
+      if (toWarehouse) query = query.where('to_warehouse', toWarehouse);
+      if (transportType) query = query.where('transport_type', transportType);
+      if (isLogisticsAbnormal !== undefined && isLogisticsAbnormal !== '') {
+        query = query.where('is_logistics_abnormal', isLogisticsAbnormal === 'true' ? 1 : 0);
+      }
+      if (isShelfAbnormal !== undefined && isShelfAbnormal !== '') {
+        query = query.where('is_shelf_abnormal', isShelfAbnormal === 'true' ? 1 : 0);
+      }
+      if (isReconciled !== undefined && isReconciled !== '') {
+        query = query.where('is_reconciled', isReconciled === 'true' ? 1 : 0);
+      }
+      if (abnormal) {
+        if (abnormal === 'logistics') {
+          query = query.where('is_logistics_abnormal', 1);
+        } else if (abnormal === 'shelf') {
+          query = query.where('is_shelf_abnormal', 1);
+        } else if (abnormal === 'timeout') {
+          query = query.where('status', 'IN_TRANSIT')
+            .whereNotNull('expected_arrival_date')
+            .where('expected_arrival_date', '<', new Date().toISOString().slice(0, 10))
+            .whereNull('logistics_sign_time');
+        } else if (abnormal === 'any' || abnormal === 'true') {
+          query = query.where(function() {
+            this.where('is_logistics_abnormal', 1).orWhere('is_shelf_abnormal', 1);
+          });
+        }
+      }
+      if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
+      if (team) query = query.where('team', team);
+      query = applyTimeRangeFilters(query, c);
+      if (transferNosParam) {
+        const transferNos = transferNosParam.split(',').filter(Boolean);
+        query = query.whereIn('transfer_no', transferNos);
+      }
+
+      updateProgress(task.id, 50);
+
+      const data = await query
+        .select([
+          'transfer_no', 'inbound_order_no', 'from_warehouse', 'to_warehouse',
+          'transport_type', 'status', 'total_sku_count', 'total_qty',
+          'total_carton_count', 'logistics_carrier', 'is_logistics_abnormal',
+          'is_shelf_abnormal', 'create_time',
+        ])
+        .limit(10000)
+        .orderBy('create_time', 'desc');
+
+      updateProgress(task.id, 80);
+
+      const rows = data.map((row: any) => ({
+        '调拨单号': row.transfer_no,
+        '入库单号': row.inbound_order_no,
+        '发货仓库': row.from_warehouse,
+        '目的仓库': row.to_warehouse,
+        '运输类型': row.transport_type,
+        '状态': row.status,
+        'SKU数': row.total_sku_count,
+        '总数量': row.total_qty,
+        '箱数': row.total_carton_count,
+        '物流商': row.logistics_carrier,
+        '物流异常': row.is_logistics_abnormal ? '是' : '否',
+        '上架异常': row.is_shelf_abnormal ? '是' : '否',
+        '创建时间': row.create_time,
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, '调拨单');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+      completeTask(task.id, buf);
+    } catch (err: any) {
+      failTask(task.id, err.message || '导出失败');
     }
-  }
-  if (logisticsCarrier) query = query.where('logistics_carrier', logisticsCarrier);
-  if (team) query = query.where('team', team);
-  query = applyTimeRangeFilters(query, c);
+  })();
 
-  const transferNosParam = c.req.query('transfer_nos');
-  if (transferNosParam) {
-    const transferNos = transferNosParam.split(',').filter(Boolean);
-    query = query.whereIn('transfer_no', transferNos);
-  }
+  return c.json({ success: true, data: { taskId: task.id } });
+});
 
-  const data = await query
-    .select([
-      'transfer_no',
-      'inbound_order_no',
-      'from_warehouse',
-      'to_warehouse',
-      'transport_type',
-      'status',
-      'total_sku_count',
-      'total_qty',
-      'total_carton_count',
-      'logistics_carrier',
-      'is_logistics_abnormal',
-      'is_shelf_abnormal',
-      'create_time',
-    ])
-    .limit(10000)
-    .orderBy('create_time', 'desc');
+orders.get('/export/:taskId/status', async (c) => {
+  const taskId = c.req.param('taskId');
+  const task = getTask(taskId);
+  if (!task) return c.json({ success: false, error: '任务不存在' }, 404);
+  return c.json({
+    success: true,
+    data: {
+      taskId: task.id,
+      type: task.type,
+      fileName: task.fileName,
+      status: task.status,
+      progress: task.progress,
+      total: task.total,
+      error: task.error,
+    },
+  });
+});
 
-  const rows = data.map((row: any) => ({
-    '调拨单号': row.transfer_no,
-    '入库单号': row.inbound_order_no,
-    '发货仓库': row.from_warehouse,
-    '目的仓库': row.to_warehouse,
-    '运输类型': row.transport_type,
-    '状态': row.status,
-    'SKU数': row.total_sku_count,
-    '总数量': row.total_qty,
-    '箱数': row.total_carton_count,
-    '物流商': row.logistics_carrier,
-    '物流异常': row.is_logistics_abnormal ? '是' : '否',
-    '上架异常': row.is_shelf_abnormal ? '是' : '否',
-    '创建时间': row.create_time,
-  }));
-
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, '调拨单');
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
-  return new Response(buf, {
+orders.get('/export/:taskId/download', async (c) => {
+  const taskId = c.req.param('taskId');
+  const task = getTask(taskId);
+  if (!task) return c.json({ success: false, error: '任务不存在' }, 404);
+  if (task.status !== 'completed' || !task.buffer) return c.json({ success: false, error: '文件未就绪' }, 400);
+  return new Response(task.buffer, {
+    status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename=orders_export.xlsx',
+      'Content-Disposition': `attachment; filename=${encodeURIComponent(task.fileName)}`,
     },
   });
 });

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, ShieldCheck, Search, RotateCcw } from 'lucide-react';
-import { api, API_BASE } from '../../api/client';
+import { api } from '../../api/client';
 import { TransportTypeLabel, TransferStatusLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransportType, TransferStatus } from 'shared/constants';
 import { StatCard, Card, FormField, Table, Pagination, Button, Badge, TimeFilterPanel } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
+import { useExportStore } from '../../store/exportStore';
 
 interface DashboardData {
   inTransitTotal: number;
@@ -194,7 +195,9 @@ export default function TrackingPage() {
     setSelectedKeys(new Set());
   }, []);
 
-  const handleExport = useCallback(async () => {
+  const { startExport } = useExportStore();
+
+  const handleExport = useCallback(() => {
     const params = new URLSearchParams();
     if (filters.from_warehouse) params.set('from_warehouse', filters.from_warehouse);
     if (filters.to_warehouse) params.set('to_warehouse', filters.to_warehouse);
@@ -203,29 +206,8 @@ export default function TrackingPage() {
     if (filters.logistics_carrier) params.set('logistics_carrier', filters.logistics_carrier);
     if (filters.team) params.set('team', filters.team);
     if (selectedKeys.size > 0) params.set('transfer_nos', Array.from(selectedKeys).join(','));
-    const token = localStorage.getItem('token');
-    try {
-      const res = await fetch(`${API_BASE}/tracking/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) {
-        const text = await res.text();
-        alert('导出失败: ' + (text || res.statusText));
-        return;
-      }
-      const blob = await res.blob();
-      if (blob.size === 0) {
-        alert('导出数据为空');
-        return;
-      }
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = '在途明细.xlsx';
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : '导出失败');
-    }
-  }, [filters, selectedKeys]);
+    startExport('tracking', params);
+  }, [filters, selectedKeys, startExport]);
 
   const handleSlaCheck = useCallback(async () => {
     try {
