@@ -6,26 +6,25 @@ const COLUMN_MAP: Record<string, string> = {
   '调拨单号': 'transfer_no_import',
   '出库单号': 'outbound_order_no',
   '创建时间': 'create_time',
-  '发货仓': 'from_warehouse',
-  '目的仓': 'to_warehouse',
+  '发货仓库': 'from_warehouse',
+  '目标仓库': 'to_warehouse',
   '团队': 'team',
-  '箱号（赫特）': 'carton_no_hermes',
-  '赫特SKU': 'sku_code',
-  '赫特产品名称': 'sku_name',
-  '品名': 'product_name',
-  '第三方SKU': 'overseas_sku_code',
+  '包装ID': 'carton_no_hermes',
+  'SKU': 'sku_code',
+  '产品名称': 'sku_name',
+  '海外仓SKU': 'overseas_sku_code',
   '计划数量': 'expected_qty',
-  '是否报关': 'is_customs_declared',
-  '报关工厂': 'customs_factory',
-  '时效要求': 'timeline_requirement_days',
-  '运输类型': 'transport_type',
-  '物流商': 'logistics_carrier',
-  '提货时间': 'pickup_time',
   '实发数量': 'outbound_qty',
-  '箱规码': 'carton_spec_code',
+  '时效要求': 'timeline_requirement_days',
+  '物流商': 'logistics_carrier',
+  '运输类型': 'transport_type',
+  '提货时间': 'pickup_time',
   '长': 'carton_length',
   '宽': 'carton_width',
   '高': 'carton_height',
+  '是否报关': 'is_customs_declared',
+  '报关工厂': 'customs_factory',
+  '申报品名': 'declared_product_name',
   '申报货值': 'declared_value',
   '仓库实重': 'carton_weight',
   '渠道实重': 'channel_weight',
@@ -36,7 +35,7 @@ const COLUMN_MAP: Record<string, string> = {
 const INBOUND_RETURN_COLUMN_MAP: Record<string, string> = {
   '第三方入库单号': 'inbound_order_no',
   '箱号': 'carton_no',
-  'SKU编码': 'sku_code',
+  'SKU': 'sku_code',
   '实际入库数量': 'inbound_qty',
   '入库时间': 'inbound_time',
   '上架数量': 'shelf_qty',
@@ -98,10 +97,10 @@ const CARTON_TIME_MAP: Record<string, string> = {
 const CARTON_LIST_COLUMN_MAP: Record<string, string> = {
   '第三方入库单号': 'inbound_order_no',
   '箱号': 'carton_no',
-  '赫特SKU': 'sku_code',
-  '第三方SKU': 'overseas_sku_code',
+  'SKU': 'sku_code',
+  '海外仓SKU': 'overseas_sku_code',
   '实发数量': 'outbound_qty',
-  '箱号（赫特）': 'carton_no_hermes',
+  '总箱数': 'total_carton_count',
 };
 
 const FREIGHT_COLUMN_MAP: Record<string, string> = {
@@ -141,7 +140,7 @@ const ORDER_LEVEL_FIELDS = [
 
 const CARTON_LEVEL_FIELDS = [
   'carton_spec_code', 'carton_length', 'carton_width', 'carton_height',
-  'declared_value', 'carton_weight', 'channel_weight',
+  'declared_product_name', 'declared_value', 'carton_weight', 'channel_weight',
 ];
 
 interface RowError {
@@ -1289,7 +1288,7 @@ export async function importCartonList(buffer: ArrayBuffer, operator: string): P
     } else if (!hasValue(row.carton_no)) {
       errors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 必填字段缺失: 箱号`, inbound_order_no: String(row.inbound_order_no) });
     } else if (!hasValue(row.sku_code)) {
-      errors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 必填字段缺失: 赫特SKU`, inbound_order_no: String(row.inbound_order_no) });
+      errors.push({ row: row._rowIndex, message: `入库单号 ${row.inbound_order_no} 必填字段缺失: SKU`, inbound_order_no: String(row.inbound_order_no) });
     } else {
       if (hasValue(row.outbound_qty)) {
         const num = Number(row.outbound_qty);
@@ -1341,6 +1340,7 @@ export async function importCartonList(buffer: ArrayBuffer, operator: string): P
     const cartonUpdateList: { id: number; data: Record<string, any> }[] = [];
     const allCartonItems: any[] = [];
     const itemUpdateList: { id: number; data: Record<string, any> }[] = [];
+    const orderUpdateList: { id: number; data: Record<string, any> }[] = [];
     const changeLogRecords: any[] = [];
     const affectedTransferNos: string[] = [];
 
@@ -1368,15 +1368,10 @@ export async function importCartonList(buffer: ArrayBuffer, operator: string): P
 
           if (existingCarton) {
             const updates: Record<string, any> = { update_time: new Date().toISOString() };
-            const firstRow = cartonRows[0];
-            if (hasValue(firstRow.carton_no_hermes)) {
-              updates.carton_spec_code = String(firstRow.carton_no_hermes);
-            }
             if (Object.keys(updates).length > 1) {
               cartonUpdateList.push({ id: existingCarton.id, data: updates });
             }
           } else {
-            const firstRow = cartonRows[0];
             const cartonData: Record<string, any> = {
               transfer_no: order.transfer_no,
               inbound_order_no: inboundOrderNo,
@@ -1384,9 +1379,6 @@ export async function importCartonList(buffer: ArrayBuffer, operator: string): P
               create_time: new Date().toISOString(),
               update_time: new Date().toISOString(),
             };
-            if (hasValue(firstRow.carton_no_hermes)) {
-              cartonData.carton_spec_code = String(firstRow.carton_no_hermes);
-            }
             newCartons.push(cartonData);
           }
 
@@ -1412,6 +1404,14 @@ export async function importCartonList(buffer: ArrayBuffer, operator: string): P
           const existingItem = existingItemMap.get(`${order.transfer_no}:${skuCode}`);
           if (existingItem && totalOutboundQty > 0) {
             itemUpdateList.push({ id: existingItem.id, data: { outbound_qty: totalOutboundQty } });
+          }
+        }
+
+        const firstRowTotalCarton = groupRows.find((r) => hasValue(r.total_carton_count));
+        if (firstRowTotalCarton) {
+          const totalCartonCount = Number(firstRowTotalCarton.total_carton_count);
+          if (!isNaN(totalCartonCount) && totalCartonCount > 0) {
+            orderUpdateList.push({ id: order.id, data: { total_carton_count: Math.round(totalCartonCount), update_time: new Date().toISOString() } });
           }
         }
 
@@ -1448,6 +1448,7 @@ export async function importCartonList(buffer: ArrayBuffer, operator: string): P
     await batchUpdateGrouped(trx, 'transfer_cartons', cartonUpdateList);
     await batchInsert(trx, 'transfer_carton_items', allCartonItems);
     await batchUpdateGrouped(trx, 'transfer_order_items', itemUpdateList);
+    await batchUpdateGrouped(trx, 'transfer_orders', orderUpdateList);
 
     for (const tno of affectedTransferNos) {
       await recalcOrderStats(trx, tno);
@@ -1472,22 +1473,22 @@ export async function importCartonList(buffer: ArrayBuffer, operator: string): P
 export function generateTemplate(type: string): ArrayBuffer {
   const headersByType: Record<string, string[]> = {
     main: [
-      '第三方入库单号', '调拨单号', '出库单号', '创建时间', '发货仓', '目的仓', '团队',
-      '箱号（赫特）', '赫特SKU', '赫特产品名称', '品名', '第三方SKU', '计划数量',
-      '是否报关', '报关工厂', '时效要求', '运输类型', '物流商', '提货时间',
-      '实发数量', '箱规码', '长', '宽', '高', '申报货值', '仓库实重', '渠道实重', '单价', '备注',
+      '第三方入库单号', '调拨单号', '出库单号', '创建时间', '发货仓库', '目标仓库', '团队',
+      'SKU', '产品名称', '海外仓SKU', '计划数量', '实发数量',
+      '时效要求', '物流商', '运输类型', '提货时间',
+      '包装ID', '长', '宽', '高', '是否报关', '报关工厂', '申报品名', '申报货值', '仓库实重', '渠道实重', '单价', '备注',
     ],
     logistics: [
       '第三方入库单号', '物流商', '物流单号', '发货时间', '离港时间', '到港时间', '清关时间', '尾程提取时间', '签收时间', '卸货时间', '上架时间', '是否报关', '报关工厂', '是否查验', '尾程类型', '尾程渠道', '事件时间', '事件类型', '事件描述', '位置', '箱号', '长', '宽', '高', '实重', '申报货值',
     ],
     inbound: [
-      '第三方入库单号', '箱号', 'SKU编码', '实际入库数量', '入库时间', '上架数量', '上架异常', '上架异常类型', '上架异常备注',
+      '第三方入库单号', '箱号', 'SKU', '实际入库数量', '入库时间', '上架数量', '上架异常', '上架异常类型', '上架异常备注',
     ],
     freight: [
       '第三方入库单号', '物流商', '运费', '报关费', '其他费用', '币种', '汇率', '账单日期', '备注',
     ],
     carton: [
-      '第三方入库单号', '箱号', '赫特SKU', '第三方SKU', '实发数量', '箱号（赫特）',
+      '第三方入库单号', '箱号', 'SKU', '海外仓SKU', '实发数量', '总箱数',
     ],
   };
 
