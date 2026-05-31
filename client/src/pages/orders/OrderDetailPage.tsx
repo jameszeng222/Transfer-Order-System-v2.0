@@ -363,7 +363,7 @@ export default function OrderDetailPage() {
   const skuColumns: ColumnDef[] = [
     { key: 'sku_code', title: '系统SKU', render: (_, row) => <span className="font-medium text-text-primary">{row.sku_code as string}</span> },
     { key: 'overseas_sku_code', title: '海外仓SKU', render: (_, row) => <span className="text-text-tertiary">{(row.overseas_sku_code as string) || '--'}</span> },
-    { key: 'sku_name', title: '品名', render: (_, row) => (row.sku_name as string) || '--' },
+    { key: 'sku_name', title: '产品名称', render: (_, row) => (row.sku_name as string) || '--' },
     { key: 'expected_qty', title: '计划数量' },
     { key: 'outbound_qty', title: '实际发货' },
     {
@@ -680,7 +680,7 @@ export default function OrderDetailPage() {
         <div className="space-y-4">
           <FormField label="调拨单号" name="transfer_no" type="text" value={discrepancyForm.transfer_no} onChange={handleDiscrepancyFormChange} required placeholder="请输入调拨单号" />
           <FormField label="SKU编码" name="sku_code" type="text" value={discrepancyForm.sku_code} onChange={handleDiscrepancyFormChange} required placeholder="请输入SKU编码" />
-          <FormField label="品名" name="sku_name" type="text" value={discrepancyForm.sku_name} onChange={handleDiscrepancyFormChange} placeholder="请输入品名" />
+          <FormField label="产品名称" name="sku_name" type="text" value={discrepancyForm.sku_name} onChange={handleDiscrepancyFormChange} placeholder="请输入产品名称" />
           <FormField label="异常分类" name="discrepancy_category" type="select" value={discrepancyForm.discrepancy_category} onChange={handleDiscrepancyFormChange} required placeholder="请选择异常分类" options={DISCREPANCY_CATEGORY_OPTIONS} />
           {discrepancyForm.discrepancy_category && DISCREPANCY_TYPE_MAP[discrepancyForm.discrepancy_category] && (
             <FormField label="异常类型" name="discrepancy_type" type="select" value={discrepancyForm.discrepancy_type} onChange={handleDiscrepancyFormChange} required placeholder="请选择异常类型" options={DISCREPANCY_TYPE_MAP[discrepancyForm.discrepancy_category]} />
@@ -699,7 +699,7 @@ export default function OrderDetailPage() {
         <div className="space-y-4">
           <div className="text-sm text-gray-600">
             <p>SKU：<span className="font-medium text-gray-900">{confirmShortageItem?.sku_code}</span></p>
-            <p>品名：<span className="font-medium text-gray-900">{confirmShortageItem?.sku_name || '--'}</span></p>
+            <p>产品名称：<span className="font-medium text-gray-900">{confirmShortageItem?.sku_name || '--'}</span></p>
             <p>上架短缺数量：<span className="font-medium text-red">{confirmShortageItem?.shelf_shortage}</span></p>
           </div>
           <p className="text-sm text-gray-500">确认将为该SKU生成上架短缺异常单？</p>
