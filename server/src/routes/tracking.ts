@@ -477,8 +477,6 @@ tracking.get('/export', async (c) => {
     ? orders.filter((o: any) => filteredTransferNos.includes(o.transfer_no))
     : orders;
 
-  const orderMap = new Map(filteredOrders.map((o: any) => [o.transfer_no, o]));
-
   const cartons = filteredTransferNos.length > 0
     ? await db('transfer_cartons')
         .whereIn('transfer_no', filteredTransferNos)
@@ -517,12 +515,38 @@ tracking.get('/export', async (c) => {
         ])
     : [];
 
+  const orderItems = filteredTransferNos.length > 0
+    ? await db('transfer_order_items')
+        .whereIn('transfer_no', filteredTransferNos)
+        .select([
+          'id',
+          'transfer_no',
+          'sku_code',
+          'sku_name',
+          'overseas_sku_code',
+          'expected_qty',
+          'outbound_qty',
+        ])
+    : [];
+
   const cartonItemsByCarton: Record<string, any[]> = {};
   for (const ci of cartonItems) {
     if (!cartonItemsByCarton[ci.carton_no]) {
       cartonItemsByCarton[ci.carton_no] = [];
     }
     cartonItemsByCarton[ci.carton_no].push(ci);
+  }
+
+  const cartonsByOrder: Record<string, any[]> = {};
+  for (const ctn of cartons) {
+    if (!cartonsByOrder[ctn.transfer_no]) cartonsByOrder[ctn.transfer_no] = [];
+    cartonsByOrder[ctn.transfer_no].push(ctn);
+  }
+
+  const orderItemsByOrder: Record<string, any[]> = {};
+  for (const oi of orderItems) {
+    if (!orderItemsByOrder[oi.transfer_no]) orderItemsByOrder[oi.transfer_no] = [];
+    orderItemsByOrder[oi.transfer_no].push(oi);
   }
 
   const headers = [
@@ -568,39 +592,119 @@ tracking.get('/export', async (c) => {
 
   const sheetData: any[][] = [];
 
-  for (const ctn of cartons) {
-    const order = orderMap.get(ctn.transfer_no);
-    if (!order) continue;
+  for (const order of filteredOrders) {
+    const orderCartons = cartonsByOrder[order.transfer_no] || [];
+    const oItems = orderItemsByOrder[order.transfer_no] || [];
 
-    const items = cartonItemsByCarton[ctn.carton_no] || [{}];
+    if (orderCartons.length > 0) {
+      for (const ctn of orderCartons) {
+        const items = cartonItemsByCarton[ctn.carton_no] || [{}];
+        for (const item of items) {
+          const inboundCartonKey = `${order.inbound_order_no}+${ctn.carton_no}`;
 
-    for (const item of items) {
-      const inboundCartonKey = `${order.inbound_order_no}+${ctn.carton_no}`;
+          let checkoutToSignDays: number | null = null;
+          if (ctn.departure_time && ctn.logistics_sign_time) {
+            checkoutToSignDays = Math.round((new Date(ctn.logistics_sign_time).getTime() - new Date(ctn.departure_time).getTime()) / 86400000 * 100) / 100;
+          }
 
-      let checkoutToSignDays: number | null = null;
-      if (ctn.departure_time && ctn.logistics_sign_time) {
-        checkoutToSignDays = Math.round((new Date(ctn.logistics_sign_time).getTime() - new Date(ctn.departure_time).getTime()) / 86400000 * 100) / 100;
+          let signToShelfDays: number | null = null;
+          if (ctn.logistics_sign_time && ctn.shelf_time) {
+            signToShelfDays = Math.round((new Date(ctn.shelf_time).getTime() - new Date(ctn.logistics_sign_time).getTime()) / 86400000 * 100) / 100;
+          }
+
+          let unloadToShelfDays: number | null = null;
+          if (ctn.unload_time && ctn.shelf_time) {
+            unloadToShelfDays = Math.round((new Date(ctn.shelf_time).getTime() - new Date(ctn.unload_time).getTime()) / 86400000 * 100) / 100;
+          }
+
+          sheetData.push([
+            order.inbound_order_no,
+            order.transfer_no,
+            inboundCartonKey,
+            ctn.carton_no,
+            item.sku_code || '',
+            item.overseas_sku_code || '',
+            item.qty || 0,
+            item.qty || 0,
+            order.status,
+            order.from_warehouse,
+            order.to_warehouse,
+            order.team,
+            order.transport_type,
+            order.timeline_requirement_days,
+            order.logistics_tracking_no,
+            ctn.logistics_sign_time || order.logistics_sign_time,
+            ctn.departure_time || order.departure_time,
+            ctn.arrival_port_time || order.arrival_port_time,
+            ctn.customs_clearance_time || order.customs_clearance_time,
+            ctn.last_mile_pickup_time || order.last_mile_pickup_time,
+            ctn.logistics_sign_time || order.logistics_sign_time,
+            ctn.unload_time || order.unload_time,
+            ctn.shelf_time || order.shelf_time,
+            checkoutToSignDays ?? ctn.checkout_to_sign_days ?? '',
+            signToShelfDays ?? ctn.sign_to_shelf_days ?? '',
+            unloadToShelfDays ?? ctn.unload_to_shelf_days ?? '',
+            order.expected_arrival_date || '',
+            order.expected_shelf_date || '',
+            '',
+            order.is_logistics_abnormal ? '是' : '否',
+            order.logistics_abnormal_remark || '',
+            order.delay_explanation || '',
+            order.is_inspected ? '是' : '否',
+            ctn.is_shelf_within_3days ? '是' : (signToShelfDays !== null ? (signToShelfDays <= 3 ? '是' : '否') : ''),
+            ctn.is_carton_within_11days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 11 ? '是' : '否') : ''),
+            ctn.is_carton_within_7days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 7 ? '是' : '否') : ''),
+            ctn.is_carton_within_4days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 4 ? '是' : '否') : ''),
+            order.last_mile_type || '',
+            order.last_mile_channel || '',
+          ]);
+        }
       }
-
-      let signToShelfDays: number | null = null;
-      if (ctn.logistics_sign_time && ctn.shelf_time) {
-        signToShelfDays = Math.round((new Date(ctn.shelf_time).getTime() - new Date(ctn.logistics_sign_time).getTime()) / 86400000 * 100) / 100;
+    } else if (oItems.length > 0) {
+      for (const oi of oItems) {
+        sheetData.push([
+          order.inbound_order_no,
+          order.transfer_no,
+          order.inbound_order_no,
+          '',
+          oi.sku_code || '',
+          oi.overseas_sku_code || '',
+          oi.expected_qty || 0,
+          oi.outbound_qty || 0,
+          order.status,
+          order.from_warehouse,
+          order.to_warehouse,
+          order.team,
+          order.transport_type,
+          order.timeline_requirement_days,
+          order.logistics_tracking_no,
+          order.logistics_sign_time || '',
+          order.departure_time || '',
+          order.arrival_port_time || '',
+          order.customs_clearance_time || '',
+          order.last_mile_pickup_time || '',
+          order.logistics_sign_time || '',
+          order.unload_time || '',
+          order.shelf_time || '',
+          '', '', '', '',
+          order.expected_arrival_date || '',
+          order.expected_shelf_date || '',
+          '',
+          order.is_logistics_abnormal ? '是' : '否',
+          order.logistics_abnormal_remark || '',
+          order.delay_explanation || '',
+          order.is_inspected ? '是' : '否',
+          '', '', '', '',
+          order.last_mile_type || '',
+          order.last_mile_channel || '',
+        ]);
       }
-
-      let unloadToShelfDays: number | null = null;
-      if (ctn.unload_time && ctn.shelf_time) {
-        unloadToShelfDays = Math.round((new Date(ctn.shelf_time).getTime() - new Date(ctn.unload_time).getTime()) / 86400000 * 100) / 100;
-      }
-
+    } else {
       sheetData.push([
         order.inbound_order_no,
         order.transfer_no,
-        inboundCartonKey,
-        ctn.carton_no,
-        item.sku_code || '',
-        item.overseas_sku_code || '',
-        item.qty || 0,
-        item.qty || 0,
+        order.inbound_order_no,
+        '', '', '', '', '',
         order.status,
         order.from_warehouse,
         order.to_warehouse,
@@ -608,17 +712,15 @@ tracking.get('/export', async (c) => {
         order.transport_type,
         order.timeline_requirement_days,
         order.logistics_tracking_no,
-        ctn.logistics_sign_time || order.logistics_sign_time,
-        ctn.departure_time || order.departure_time,
-        ctn.arrival_port_time || order.arrival_port_time,
-        ctn.customs_clearance_time || order.customs_clearance_time,
-        ctn.last_mile_pickup_time || order.last_mile_pickup_time,
-        ctn.logistics_sign_time || order.logistics_sign_time,
-        ctn.unload_time || order.unload_time,
-        ctn.shelf_time || order.shelf_time,
-        checkoutToSignDays ?? ctn.checkout_to_sign_days ?? '',
-        signToShelfDays ?? ctn.sign_to_shelf_days ?? '',
-        unloadToShelfDays ?? ctn.unload_to_shelf_days ?? '',
+        order.logistics_sign_time || '',
+        order.departure_time || '',
+        order.arrival_port_time || '',
+        order.customs_clearance_time || '',
+        order.last_mile_pickup_time || '',
+        order.logistics_sign_time || '',
+        order.unload_time || '',
+        order.shelf_time || '',
+        '', '', '', '',
         order.expected_arrival_date || '',
         order.expected_shelf_date || '',
         '',
@@ -626,10 +728,7 @@ tracking.get('/export', async (c) => {
         order.logistics_abnormal_remark || '',
         order.delay_explanation || '',
         order.is_inspected ? '是' : '否',
-        ctn.is_shelf_within_3days ? '是' : (signToShelfDays !== null ? (signToShelfDays <= 3 ? '是' : '否') : ''),
-        ctn.is_carton_within_11days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 11 ? '是' : '否') : ''),
-        ctn.is_carton_within_7days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 7 ? '是' : '否') : ''),
-        ctn.is_carton_within_4days ? '是' : (checkoutToSignDays !== null ? (checkoutToSignDays <= 4 ? '是' : '否') : ''),
+        '', '', '', '',
         order.last_mile_type || '',
         order.last_mile_channel || '',
       ]);
