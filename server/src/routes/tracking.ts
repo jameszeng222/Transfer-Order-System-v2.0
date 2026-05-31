@@ -93,9 +93,18 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const team = c.req.query('team');
   const abnormal = c.req.query('abnormal');
   const statusFilter = c.req.query('status');
+  const keyword = c.req.query('keyword');
 
   const TRACKING_STATUSES = ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'];
   let query = db('transfer_orders').whereIn('status', TRACKING_STATUSES);
+
+  if (keyword) {
+    query = query.where(function () {
+      this.where('inbound_order_no', 'like', `%${keyword}%`)
+        .orWhere('transfer_no', 'like', `%${keyword}%`)
+        .orWhere('logistics_tracking_no', 'like', `%${keyword}%`);
+    });
+  }
 
   if (statusFilter && TRACKING_STATUSES.includes(statusFilter)) {
     query = query.where('status', statusFilter);
@@ -174,7 +183,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
       'remark',
       'shelf_time',
     ])
-    .orderBy('pickup_time', 'asc')
+    .orderBy('create_time', 'desc')
     .offset((page - 1) * pageSize)
     .limit(pageSize);
 
@@ -280,7 +289,7 @@ tracking.get('/dashboard', async (c) => {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const [slaRules, warehouseIdMap, inTransitOrders, warehouseDistRows, transportDistRows, carrierDistRows, recentReceived] = await Promise.all([
+  const [slaRules, warehouseIdMap, inTransitOrders, inTransitCartonCount, warehouseDistRows, transportDistRows, carrierDistRows, recentReceived] = await Promise.all([
     getSlaRules(),
     getWarehouseIdMap(),
     db('transfer_orders')
@@ -292,6 +301,11 @@ tracking.get('/dashboard', async (c) => {
         'transport_type',
         'pickup_time',
       ]),
+    db('transfer_cartons')
+      .leftJoin('transfer_orders', 'transfer_cartons.transfer_no', 'transfer_orders.transfer_no')
+      .whereIn('transfer_orders.status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
+      .count('* as count')
+      .first(),
     db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('to_warehouse').count('* as count').groupBy('to_warehouse'),
     db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('transport_type').count('* as count').groupBy('transport_type'),
     db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('logistics_carrier').count('* as count').groupBy('logistics_carrier'),
@@ -349,6 +363,7 @@ tracking.get('/dashboard', async (c) => {
     success: true,
     data: {
       inTransitTotal: inTransitOrders.length,
+      inTransitCartonCount: Number(inTransitCartonCount?.count || 0),
       timeoutCount,
       approachingCount,
       warehouseDistribution: Object.entries(warehouseDist).map(([warehouse, count]) => ({
@@ -380,7 +395,7 @@ tracking.get('/export', async (c) => {
   const team = c.req.query('team');
   const abnormal = c.req.query('abnormal');
 
-  let query = db('transfer_orders').whereIn('status', ['IN_TRANSIT', 'RECEIVED']);
+  let query = db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']);
 
   if (fromWarehouse) query = query.where('from_warehouse', fromWarehouse);
   if (toWarehouse) query = query.where('to_warehouse', toWarehouse);

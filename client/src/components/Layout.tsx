@@ -12,6 +12,7 @@ import {
   Users,
   UserCog,
   LogOut,
+  Database,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 
@@ -36,6 +37,7 @@ const menuItems: MenuItem[] = [
   { label: 'SLA规则', icon: Clock, path: '/sla', permission: 'settings.manage', group: '配置' },
   { label: '团队管理', icon: Users, path: '/teams', permission: 'settings.manage', group: '配置' },
   { label: '用户管理', icon: UserCog, path: '/users', permission: 'settings.manage', group: '配置' },
+  { label: '数据管理', icon: Database, path: '/data-management', permission: 'settings.manage', group: '配置' },
 ];
 
 const pageTitles: Record<string, string> = {
@@ -50,6 +52,7 @@ const pageTitles: Record<string, string> = {
   '/sla': 'SLA规则',
   '/teams': '团队管理',
   '/users': '用户管理',
+  '/data-management': '数据管理',
 };
 
 const badgeVariantClasses: Record<string, string> = {

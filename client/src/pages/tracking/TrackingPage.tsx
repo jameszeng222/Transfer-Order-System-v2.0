@@ -299,7 +299,7 @@ export default function TrackingPage() {
     { key: 'to_warehouse', title: '目的仓库' },
     {
       key: 'transport_type',
-      title: '运输',
+      title: '运输类型',
       render: (_, row) => {
         const t = row.transport_type as TransportType;
         return t ? (TransportTypeLabel[t] || t) : '--';

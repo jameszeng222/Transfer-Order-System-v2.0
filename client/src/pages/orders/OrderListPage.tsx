@@ -267,7 +267,7 @@ export default function OrderListPage() {
     { key: 'team', title: '团队', render: (_, row) => (row.team as string) || '--' },
     {
       key: 'transport_type',
-      title: '运输',
+      title: '运输类型',
       render: (_, row) => {
         const t = row.transport_type as TransportType;
         return t ? (TransportTypeLabel[t] || t) : '--';
