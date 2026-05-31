@@ -326,8 +326,8 @@ export default function OrderDetailPage() {
     {
       title: '仓配信息',
       items: [
-        { label: '发货仓', value: order.from_warehouse },
-        { label: '目的仓', value: order.to_warehouse },
+        { label: '发货仓库', value: order.from_warehouse },
+        { label: '目的仓库', value: order.to_warehouse },
         { label: '团队', value: order.team || '--' },
       ],
     },

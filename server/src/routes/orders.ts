@@ -329,8 +329,8 @@ orders.get('/export', async (c) => {
   const rows = data.map((row: any) => ({
     '调拨单号': row.transfer_no,
     '入库单号': row.inbound_order_no,
-    '来源仓': row.from_warehouse,
-    '目的仓': row.to_warehouse,
+    '发货仓库': row.from_warehouse,
+    '目的仓库': row.to_warehouse,
     '运输类型': row.transport_type,
     '状态': row.status,
     'SKU数': row.total_sku_count,

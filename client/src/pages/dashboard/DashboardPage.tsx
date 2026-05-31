@@ -170,7 +170,7 @@ export default function DashboardPage() {
             </div>
           </Card>
 
-          <Card title="目的仓分布">
+          <Card title="目的仓库分布">
             <div className="px-5 py-4">
               <div className="flex gap-5 text-xs flex-wrap">
                 {(data?.warehouseDistribution || []).map((item) => (

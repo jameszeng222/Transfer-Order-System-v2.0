@@ -94,7 +94,7 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   const abnormal = c.req.query('abnormal');
   const statusFilter = c.req.query('status');
 
-  const TRACKING_STATUSES = ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'];
+  const TRACKING_STATUSES = ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'];
   let query = db('transfer_orders').whereIn('status', TRACKING_STATUSES);
 
   if (statusFilter && TRACKING_STATUSES.includes(statusFilter)) {
@@ -284,7 +284,7 @@ tracking.get('/dashboard', async (c) => {
     getSlaRules(),
     getWarehouseIdMap(),
     db('transfer_orders')
-      .whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
+      .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
       .select([
         'id',
         'status',
@@ -292,9 +292,9 @@ tracking.get('/dashboard', async (c) => {
         'transport_type',
         'pickup_time',
       ]),
-    db('transfer_orders').whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('to_warehouse').count('* as count').groupBy('to_warehouse'),
-    db('transfer_orders').whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('transport_type').count('* as count').groupBy('transport_type'),
-    db('transfer_orders').whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('logistics_carrier').count('* as count').groupBy('logistics_carrier'),
+    db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('to_warehouse').count('* as count').groupBy('to_warehouse'),
+    db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('transport_type').count('* as count').groupBy('transport_type'),
+    db('transfer_orders').whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED']).select('logistics_carrier').count('* as count').groupBy('logistics_carrier'),
     db('transfer_orders').where('status', 'RECEIVED').where('logistics_sign_time', '>=', sevenDaysAgo.toISOString()).select('logistics_sign_time'),
   ]);
 
@@ -643,7 +643,7 @@ tracking.post('/sla-check', async (c) => {
   const [slaRules, warehouseIdMap] = await Promise.all([getSlaRules(), getWarehouseIdMap()]);
 
   const inTransitOrders = await db('transfer_orders')
-    .whereIn('status', ['OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
+    .whereIn('status', ['PENDING_OUTBOUND', 'OUTBOUNDED', 'IN_TRANSIT', 'RECEIVED', 'SHELVED'])
     .select([
       'id',
       'status',

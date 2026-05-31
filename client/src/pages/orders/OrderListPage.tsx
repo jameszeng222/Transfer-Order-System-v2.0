@@ -262,8 +262,8 @@ export default function OrderListPage() {
       title: '物流商',
       render: (_, row) => (row.logistics_carrier as string) || '--',
     },
-    { key: 'from_warehouse', title: '发货仓' },
-    { key: 'to_warehouse', title: '目的仓' },
+    { key: 'from_warehouse', title: '发货仓库' },
+    { key: 'to_warehouse', title: '目的仓库' },
     { key: 'team', title: '团队', render: (_, row) => (row.team as string) || '--' },
     {
       key: 'transport_type',
@@ -401,7 +401,7 @@ export default function OrderListPage() {
             type="select"
             value={filters.from_warehouse}
             onChange={handleFilterChange}
-            placeholder="全部发货仓"
+            placeholder="全部发货仓库"
             options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_name }))}
             className="w-[140px]"
           />
@@ -410,7 +410,7 @@ export default function OrderListPage() {
             type="select"
             value={filters.to_warehouse}
             onChange={handleFilterChange}
-            placeholder="全部目的仓"
+            placeholder="全部目的仓库"
             options={warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_name }))}
             className="w-[140px]"
           />
