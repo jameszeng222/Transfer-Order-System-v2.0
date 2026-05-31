@@ -567,6 +567,19 @@ export default function OrderDetailPage() {
                   <span className="text-text-tertiary">签收-上架</span>
                   <span className="text-text-secondary text-right">{ct.shelf_time ? '已上架' : '未上架'}</span>
                 </div>
+                {ct.carton_items && ct.carton_items.length > 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-border-light">
+                    <div className="text-[10px] text-text-tertiary mb-1.5">装箱SKU</div>
+                    <div className="space-y-1">
+                      {ct.carton_items.map((ci, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-xs">
+                          <span className="text-text-secondary truncate max-w-[140px]" title={ci.sku_code}>{ci.sku_code}</span>
+                          <span className="text-text-tertiary shrink-0 ml-2">{ci.qty}个</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
             {order.cartons.length === 0 && (

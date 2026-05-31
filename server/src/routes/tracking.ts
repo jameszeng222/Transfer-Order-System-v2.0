@@ -99,11 +99,26 @@ const pageSize = Math.min(Number(c.req.query('pageSize')) || 20, MAX_PAGE_SIZE);
   let query = db('transfer_orders').whereIn('status', TRACKING_STATUSES);
 
   if (keyword) {
-    query = query.where(function () {
-      this.where('inbound_order_no', 'like', `%${keyword}%`)
-        .orWhere('transfer_no', 'like', `%${keyword}%`)
-        .orWhere('logistics_tracking_no', 'like', `%${keyword}%`);
-    });
+    const matchingTransferNos = await db('transfer_orders')
+      .leftJoin('transfer_order_items', 'transfer_orders.transfer_no', 'transfer_order_items.transfer_no')
+      .leftJoin('transfer_carton_items', 'transfer_orders.transfer_no', 'transfer_carton_items.transfer_no')
+      .whereIn('transfer_orders.status', TRACKING_STATUSES)
+      .where(function () {
+        this.where('transfer_orders.inbound_order_no', 'like', `%${keyword}%`)
+          .orWhere('transfer_orders.transfer_no', 'like', `%${keyword}%`)
+          .orWhere('transfer_order_items.sku_code', 'like', `%${keyword}%`)
+          .orWhere('transfer_carton_items.sku_code', 'like', `%${keyword}%`)
+          .orWhere('transfer_order_items.overseas_sku_code', 'like', `%${keyword}%`)
+          .orWhere('transfer_carton_items.overseas_sku_code', 'like', `%${keyword}%`);
+      })
+      .pluck('transfer_orders.transfer_no')
+      .distinct();
+
+    if (matchingTransferNos.length > 0) {
+      query = query.whereIn('transfer_no', matchingTransferNos);
+    } else {
+      query = query.whereRaw('1 = 0');
+    }
   }
 
   if (statusFilter && TRACKING_STATUSES.includes(statusFilter)) {
