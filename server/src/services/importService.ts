@@ -19,9 +19,6 @@ const COLUMN_MAP: Record<string, string> = {
   '物流商': 'logistics_carrier',
   '运输类型': 'transport_type',
   '提货时间': 'pickup_time',
-  '长': 'carton_length',
-  '宽': 'carton_width',
-  '高': 'carton_height',
   '是否报关': 'is_customs_declared',
   '报关工厂': 'customs_factory',
   '申报品名': 'declared_product_name',
@@ -97,6 +94,9 @@ const CARTON_TIME_MAP: Record<string, string> = {
 const CARTON_LIST_COLUMN_MAP: Record<string, string> = {
   '第三方入库单号': 'inbound_order_no',
   '箱号': 'carton_no',
+  '长': 'carton_length',
+  '宽': 'carton_width',
+  '高': 'carton_height',
   'SKU': 'sku_code',
   '海外仓SKU': 'overseas_sku_code',
   '实发数量': 'outbound_qty',
@@ -139,8 +139,7 @@ const ORDER_LEVEL_FIELDS = [
 ];
 
 const CARTON_LEVEL_FIELDS = [
-  'carton_spec_code', 'carton_length', 'carton_width', 'carton_height',
-  'declared_product_name', 'declared_value', 'carton_weight', 'channel_weight',
+  'carton_spec_code', 'declared_product_name', 'declared_value', 'carton_weight', 'channel_weight',
 ];
 
 interface RowError {
@@ -1368,10 +1367,15 @@ export async function importCartonList(buffer: ArrayBuffer, operator: string): P
 
           if (existingCarton) {
             const updates: Record<string, any> = { update_time: new Date().toISOString() };
+            const firstRow = cartonRows[0];
+            if (hasValue(firstRow.carton_length)) updates.carton_length = Number(firstRow.carton_length);
+            if (hasValue(firstRow.carton_width)) updates.carton_width = Number(firstRow.carton_width);
+            if (hasValue(firstRow.carton_height)) updates.carton_height = Number(firstRow.carton_height);
             if (Object.keys(updates).length > 1) {
               cartonUpdateList.push({ id: existingCarton.id, data: updates });
             }
           } else {
+            const firstRow = cartonRows[0];
             const cartonData: Record<string, any> = {
               transfer_no: order.transfer_no,
               inbound_order_no: inboundOrderNo,
@@ -1379,6 +1383,9 @@ export async function importCartonList(buffer: ArrayBuffer, operator: string): P
               create_time: new Date().toISOString(),
               update_time: new Date().toISOString(),
             };
+            if (hasValue(firstRow.carton_length)) cartonData.carton_length = Number(firstRow.carton_length);
+            if (hasValue(firstRow.carton_width)) cartonData.carton_width = Number(firstRow.carton_width);
+            if (hasValue(firstRow.carton_height)) cartonData.carton_height = Number(firstRow.carton_height);
             newCartons.push(cartonData);
           }
 
@@ -1476,7 +1483,7 @@ export function generateTemplate(type: string): ArrayBuffer {
       '第三方入库单号', '调拨单号', '出库单号', '创建时间', '发货仓库', '目标仓库', '团队',
       'SKU', '产品名称', '海外仓SKU', '计划数量', '实发数量',
       '时效要求', '物流商', '运输类型', '提货时间',
-      '包装ID', '长', '宽', '高', '是否报关', '报关工厂', '申报品名', '申报货值', '仓库实重', '渠道实重', '单价', '备注',
+      '包装ID', '是否报关', '报关工厂', '申报品名', '申报货值', '仓库实重', '渠道实重', '单价', '备注',
     ],
     logistics: [
       '第三方入库单号', '物流商', '物流单号', '发货时间', '离港时间', '到港时间', '清关时间', '尾程提取时间', '签收时间', '卸货时间', '上架时间', '是否报关', '报关工厂', '是否查验', '尾程类型', '尾程渠道', '事件时间', '事件类型', '事件描述', '位置', '箱号', '长', '宽', '高', '实重', '申报货值',
@@ -1488,7 +1495,7 @@ export function generateTemplate(type: string): ArrayBuffer {
       '第三方入库单号', '物流商', '运费', '报关费', '其他费用', '币种', '汇率', '账单日期', '备注',
     ],
     carton: [
-      '第三方入库单号', '箱号', 'SKU', '海外仓SKU', '实发数量', '总箱数',
+      '第三方入库单号', '箱号', '长', '宽', '高', 'SKU', '海外仓SKU', '实发数量', '总箱数',
     ],
   };
 
