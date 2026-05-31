@@ -406,7 +406,8 @@ orders.post('/export-cartons', async (c) => {
       if (!order) { failTask(task.id, '调拨单不存在'); return; }
 
       updateProgress(task.id, 30);
-      const cartons = await db('transfer_cartons').where({ transfer_no: transferNo }).orderBy('carton_no', 'asc');
+      const cartons = await db('transfer_cartons').where({ transfer_no: transferNo });
+      cartons.sort((a: any, b: any) => (a.carton_no || '').localeCompare(b.carton_no || '', undefined, { numeric: true }));
       const cartonItems = await db('transfer_carton_items').where({ transfer_no: transferNo });
       const orderItems = await db('transfer_order_items').where({ transfer_no: transferNo });
 

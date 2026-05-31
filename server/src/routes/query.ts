@@ -22,7 +22,7 @@ query.post('/order', async (c) => {
 
     const [items, cartons, trackingEvents, discrepancyRecords, freightBills, changeLogs] = await Promise.all([
       db('transfer_order_items').where({ transfer_no: transferNo }),
-      db('transfer_cartons').where({ transfer_no: transferNo }).orderBy('carton_no', 'asc'),
+      db('transfer_cartons').where({ transfer_no: transferNo }),
       db('tracking_events').where({ transfer_no: transferNo }).orderBy('event_time', 'desc'),
       db('discrepancy_records').where({ transfer_no: transferNo }),
       db('freight_bills').where({ transfer_no: transferNo }),
@@ -37,6 +37,9 @@ query.post('/order', async (c) => {
     }));
 
     const cartonItems = await db('transfer_carton_items').where({ transfer_no: transferNo });
+
+    const natCmp = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+    cartons.sort((a: any, b: any) => natCmp(a.carton_no || '', b.carton_no || ''));
 
     const cartonItemsMap: Record<string, any[]> = {};
     for (const ci of cartonItems) {
