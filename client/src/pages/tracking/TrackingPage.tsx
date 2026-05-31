@@ -4,7 +4,7 @@ import { Download, ShieldCheck, Search, RotateCcw } from 'lucide-react';
 import { api } from '../../api/client';
 import { TransportTypeLabel, TransferStatusLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransportType, TransferStatus } from 'shared/constants';
-import { StatCard, Card, FormField, Table, Pagination, Button, Badge, TimeFilterPanel } from '../../components/ui';
+import { StatCard, Card, FormField, Table, Pagination, Button, Badge, TimeFilterPanel, Tooltip } from '../../components/ui';
 import type { ColumnDef } from '../../components/ui';
 import { useExportStore } from '../../store/exportStore';
 
@@ -253,7 +253,14 @@ export default function TrackingPage() {
         const items = row.carton_items as InTransitRow['carton_items'];
         if (!items || items.length === 0) return '--';
         const skus = [...new Set(items.map(i => i.system_sku).filter(Boolean))];
-        return <span className="text-xs">{skus.join(', ')}</span>;
+        if (skus.length === 0) return '--';
+        const display = skus.join(', ');
+        const truncated = display.length > 16 ? display.slice(0, 16) + '…' : display;
+        return (
+          <Tooltip content={skus.map((s, i) => <div key={i}>{s}</div>)}>
+            <span className="text-xs block max-w-[120px] truncate">{truncated}</span>
+          </Tooltip>
+        );
       },
     },
     {
@@ -263,7 +270,14 @@ export default function TrackingPage() {
         const items = row.carton_items as InTransitRow['carton_items'];
         if (!items || items.length === 0) return '--';
         const skus = [...new Set(items.map(i => i.overseas_sku).filter(Boolean))];
-        return <span className="text-xs">{skus.join(', ')}</span>;
+        if (skus.length === 0) return '--';
+        const display = skus.join(', ');
+        const truncated = display.length > 16 ? display.slice(0, 16) + '…' : display;
+        return (
+          <Tooltip content={skus.map((s, i) => <div key={i}>{s}</div>)}>
+            <span className="text-xs block max-w-[120px] truncate">{truncated}</span>
+          </Tooltip>
+        );
       },
     },
     {
