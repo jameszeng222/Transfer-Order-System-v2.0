@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, Download } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Download, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
 import { TransferStatusLabel, TransportTypeLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
@@ -238,8 +238,28 @@ export default function OrderDetailPage() {
   const [nodeEditField, setNodeEditField] = useState('');
   const [nodeEditValue, setNodeEditValue] = useState('');
   const [nodeEditSubmitting, setNodeEditSubmitting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const { startCartonExport } = useExportStore();
+
+  const handleDelete = useCallback(async () => {
+    if (!order) return;
+    setDeleteLoading(true);
+    try {
+      const res = await api.delete<{ success: boolean; error?: string }>(`/orders/${order.transfer_no}`);
+      if (res.success) {
+        navigate('/orders');
+      } else {
+        alert(res.error || '删除失败');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setDeleteLoading(false);
+      setDeleteConfirmOpen(false);
+    }
+  }, [order, navigate]);
 
   const NODE_STATUS_MAP: Record<string, TransferStatus> = {
     pickup_time: 'IN_TRANSIT',
@@ -461,6 +481,7 @@ export default function OrderDetailPage() {
             {order.status !== 'CANCELLED' && order.status !== 'COMPLETED' && (
               <Button variant="danger" onClick={() => handleStatusChange('CANCELLED')} loading={actionLoading}>取消</Button>
             )}
+            <Button variant="ghost" icon={Trash2} onClick={() => setDeleteConfirmOpen(true)} className="text-red-500 hover:text-red-600 hover:bg-red-50">删除</Button>
           </div>
         </div>
         <div className="px-5 py-4 grid grid-cols-5 gap-6">
@@ -741,6 +762,29 @@ export default function OrderDetailPage() {
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
             <Button variant="secondary" onClick={() => setNodeEditOpen(false)}>取消</Button>
             <Button loading={nodeEditSubmitting} onClick={handleNodeEditSubmit}>保存</Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} title="确认删除">
+        <div className="space-y-3">
+          <p className="text-sm text-text-primary">确定要删除该调拨单吗？此操作不可恢复。</p>
+          <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+              <div className="text-xs text-red-700">
+                <div className="font-semibold">将同时删除以下关联数据：</div>
+                <div className="mt-1 space-y-0.5">
+                  <div>• 调拨单主信息（{order?.transfer_no}）</div>
+                  <div>• SKU明细（{order?.items?.length || 0}条）</div>
+                  <div>• 箱明细（{order?.cartons?.length || 0}箱）</div>
+                  <div>• 物流节点、差异记录、操作日志</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-light">
+            <Button variant="secondary" onClick={() => setDeleteConfirmOpen(false)}>取消</Button>
+            <Button variant="danger" loading={deleteLoading} onClick={handleDelete}>确认删除</Button>
           </div>
         </div>
       </Modal>

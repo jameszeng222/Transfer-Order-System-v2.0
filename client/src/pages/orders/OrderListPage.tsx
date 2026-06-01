@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, RotateCcw, Upload, Download } from 'lucide-react';
+import { Search, RotateCcw, Upload, Download, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
 import { TransferStatusLabel, TransportTypeLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
@@ -225,6 +225,25 @@ export default function OrderListPage() {
   };
 
   const selectedOrders = data.filter(r => selectedKeys.has(r.transfer_no));
+
+  const handleBatchDelete = useCallback(async () => {
+    if (selectedKeys.size === 0) return;
+    if (!confirm(`确认删除选中的 ${selectedKeys.size} 个调拨单？此操作不可恢复，将同时删除所有关联数据。`)) return;
+    setBatchLoading(true);
+    try {
+      const res = await api.post<{ success: boolean; error?: string }>('/orders/batch-delete', { transfer_nos: Array.from(selectedKeys) });
+      if (res.success) {
+        setSelectedKeys(new Set());
+        setRefreshKey(k => k + 1);
+      } else {
+        alert(res.error || '删除失败');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setBatchLoading(false);
+    }
+  }, [selectedKeys]);
 
   const getBatchActions = (orders: OrderRow[]) => {
     if (orders.length === 0) return [];
@@ -451,6 +470,7 @@ export default function OrderListPage() {
               {action.label}
             </Button>
           ))}
+          <Button variant="ghost" size="sm" icon={Trash2} onClick={handleBatchDelete} loading={batchLoading} className="text-red-500 hover:text-red-600 hover:bg-red-50">删除</Button>
           <Button variant="ghost" size="sm" onClick={() => setSelectedKeys(new Set())}>取消选择</Button>
         </div>
       )}

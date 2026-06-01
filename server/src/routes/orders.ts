@@ -891,6 +891,52 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
   return c.json({ success: true, data: updated, conflicts: conflictEntries });
 });
 
+orders.delete('/:transferNo', async (c) => {
+  if (!await requirePermission(c, 'orders.delete')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
+  const transferNo = c.req.param('transferNo');
+  const order = await db('transfer_orders').where({ transfer_no: transferNo }).first();
+  if (!order) return c.json({ success: false, error: '调拨单不存在' }, 404);
+
+  try {
+    await db('tracking_events').where({ transfer_no: transferNo }).del();
+    await db('discrepancy_records').where({ transfer_no: transferNo }).del();
+    await db('change_logs').where({ transfer_no: transferNo }).del();
+    await db('transfer_carton_items').where({ transfer_no: transferNo }).del();
+    await db('transfer_cartons').where({ transfer_no: transferNo }).del();
+    await db('transfer_order_items').where({ transfer_no: transferNo }).del();
+    await db('transfer_orders').where({ transfer_no: transferNo }).del();
+    return c.json({ success: true, message: `调拨单 ${transferNo} 已删除` });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
+orders.post('/batch-delete', async (c) => {
+  if (!await requirePermission(c, 'orders.delete')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
+  const body = await c.req.json<{ transfer_nos: string[] }>();
+  const transferNos = body.transfer_nos || [];
+  if (transferNos.length === 0) return c.json({ success: false, error: '请选择要删除的调拨单' }, 400);
+
+  try {
+    for (const tn of transferNos) {
+      await db('tracking_events').where({ transfer_no: tn }).del();
+      await db('discrepancy_records').where({ transfer_no: tn }).del();
+      await db('change_logs').where({ transfer_no: tn }).del();
+      await db('transfer_carton_items').where({ transfer_no: tn }).del();
+      await db('transfer_cartons').where({ transfer_no: tn }).del();
+      await db('transfer_order_items').where({ transfer_no: tn }).del();
+      await db('transfer_orders').where({ transfer_no: tn }).del();
+    }
+    return c.json({ success: true, message: `已删除 ${transferNos.length} 个调拨单` });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
 orders.delete('/purge', async (c) => {
   if (!await requirePermission(c, 'settings.manage')) {
     return c.json({ success: false, error: '无权限' }, 403);
