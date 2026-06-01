@@ -5,6 +5,7 @@ export const Permission = {
   ORDER_IMPORT: 'order.import',
   ORDER_EDIT: 'order.edit',
   ORDER_CONFIRM: 'order.confirm',
+  ORDER_DELETE: 'order.delete',
   TRACKING_VIEW: 'tracking.view',
   TRACKING_EXPORT: 'tracking.export',
   FREIGHT_VIEW: 'freight.view',
@@ -27,6 +28,7 @@ export const RolePermissions: Record<UserRole, Permission[]> = {
   WAREHOUSE: [
     Permission.ORDER_VIEW,
     Permission.ORDER_CONFIRM,
+    Permission.ORDER_DELETE,
     Permission.TRACKING_VIEW,
     Permission.DISCREPANCY_VIEW,
     Permission.DISCREPANCY_HANDLE,

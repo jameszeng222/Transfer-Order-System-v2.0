@@ -892,7 +892,7 @@ orders.put('/edit', zValidator('json', editOrderWithTransferSchema), async (c) =
 });
 
 orders.delete('/:transferNo', async (c) => {
-  if (!await requirePermission(c, 'orders.delete')) {
+  if (!await requirePermission(c, 'order.delete')) {
     return c.json({ success: false, error: '无权限' }, 403);
   }
   const transferNo = c.req.param('transferNo');
@@ -914,7 +914,7 @@ orders.delete('/:transferNo', async (c) => {
 });
 
 orders.post('/batch-delete', async (c) => {
-  if (!await requirePermission(c, 'orders.delete')) {
+  if (!await requirePermission(c, 'order.delete')) {
     return c.json({ success: false, error: '无权限' }, 403);
   }
   const body = await c.req.json<{ transfer_nos: string[] }>();
