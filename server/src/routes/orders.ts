@@ -65,12 +65,12 @@ function computeStatusFromTimeline(order: Record<string, any>): string | null {
 }
 
 const STATUS_FLOW: Record<string, string[]> = {
-  PENDING_OUTBOUND: ['OUTBOUNDED', 'CANCELLED'],
-  OUTBOUNDED: ['IN_TRANSIT', 'CANCELLED'],
-  IN_TRANSIT: ['RECEIVED', 'CANCELLED'],
-  RECEIVED: ['SHELVED', 'PARTIAL_SHELVED', 'CANCELLED'],
-  PARTIAL_SHELVED: ['SHELVED', 'COMPLETED', 'CANCELLED'],
-  SHELVED: ['COMPLETED', 'CANCELLED'],
+  PENDING_OUTBOUND: ['OUTBOUNDED'],
+  OUTBOUNDED: ['IN_TRANSIT'],
+  IN_TRANSIT: ['RECEIVED'],
+  RECEIVED: ['SHELVED', 'PARTIAL_SHELVED'],
+  PARTIAL_SHELVED: ['SHELVED', 'COMPLETED'],
+  SHELVED: ['COMPLETED'],
   COMPLETED: [],
   CANCELLED: [],
 };
@@ -425,7 +425,7 @@ orders.post('/export-cartons', async (c) => {
 
       const headers = [
         '第三方入库单号', 'SKU', '海外仓SKU', '箱号', '实发数量', '总箱数',
-        '长', '宽', '高', '仓库实重', '渠道实重', '单价',
+        '长', '宽', '高', '仓库实重', '渠道实重', '单价', '尾程运单号',
       ];
 
       const sheetData: any[][] = [];
@@ -445,12 +445,13 @@ orders.post('/export-cartons', async (c) => {
             ctn.carton_weight || '',
             ctn.channel_weight || '',
             order.estimated_unit_price || '',
+            ctn.last_mile_tracking_no || '',
           ]);
         }
       }
 
       if (cartons.length === 0) {
-        sheetData.push([order.inbound_order_no || '', '', '', '', '', order.total_carton_count || '', '', '', '', '', order.estimated_unit_price || '']);
+        sheetData.push([order.inbound_order_no || '', '', '', '', '', order.total_carton_count || '', '', '', '', '', order.estimated_unit_price || '', '']);
       }
 
       updateProgress(task.id, 80);
@@ -934,6 +935,114 @@ orders.post('/batch-delete', async (c) => {
     return c.json({ success: true, message: `已删除 ${transferNos.length} 个调拨单` });
   } catch (err: any) {
     return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
+orders.post('/import-last-mile-tracking', async (c) => {
+  if (!await requirePermission(c, 'order.edit')) {
+    return c.json({ success: false, error: '无权限' }, 403);
+  }
+
+  const contentType = c.req.header('Content-Type') || '';
+  let buffer: ArrayBuffer;
+  let operator: string;
+
+  if (contentType.includes('application/json')) {
+    const body = await c.req.json();
+    const { data, filename } = body;
+    if (!data) return c.json({ success: false, error: '请上传文件' }, 400);
+    if (filename && !filename.endsWith('.xlsx') && !filename.endsWith('.xls')) {
+      return c.json({ success: false, error: '仅支持 Excel 文件（.xlsx / .xls）' }, 400);
+    }
+    buffer = Buffer.from(data, 'base64').buffer as ArrayBuffer;
+    const user = c.get('user');
+    operator = user?.username || 'unknown';
+  } else {
+    const body = await c.req.parseBody();
+    const file = body['file'];
+    if (!file || !(file instanceof File)) {
+      return c.json({ success: false, error: '请上传文件，字段名为 file' }, 400);
+    }
+    buffer = await file.arrayBuffer();
+    const user = c.get('user');
+    operator = user?.username || 'unknown';
+  }
+
+  try {
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const data: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if (data.length < 2) {
+      return c.json({ success: false, error: 'Excel文件为空或无有效数据' }, 400);
+    }
+
+    const headers = data[0].map((h: any) => String(h).trim());
+    const rows = data.slice(1).filter((row: any[]) => row.some((cell: any) => cell !== '' && cell !== null && cell !== undefined));
+
+    const colIdx: Record<string, number> = {};
+    headers.forEach((h, i) => {
+      if (h === '第三方入库单号' || h === '入库单号') colIdx.inbound_order_no = i;
+      if (h === '箱号') colIdx.carton_no = i;
+      if (h === '尾程运单号' || h === '尾程跟踪号' || h === '尾程跟踪单号') colIdx.last_mile_tracking_no = i;
+    });
+
+    if (colIdx.last_mile_tracking_no === undefined) {
+      return c.json({ success: false, error: 'Excel缺少「尾程运单号」列，请检查表头' }, 400);
+    }
+
+    let success = 0;
+    let failed = 0;
+    const errors: { row: number; message: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2;
+      try {
+        const trackingNo = String(row[colIdx.last_mile_tracking_no] || '').trim();
+        if (!trackingNo) { failed++; errors.push({ row: rowNum, message: '尾程运单号为空，跳过' }); continue; }
+
+        const inboundOrderNo = colIdx.inbound_order_no !== undefined ? String(row[colIdx.inbound_order_no] || '').trim() : '';
+        const cartonNo = colIdx.carton_no !== undefined ? String(row[colIdx.carton_no] || '').trim() : '';
+
+        let updated = false;
+
+        if (inboundOrderNo && cartonNo) {
+          const result = await db('transfer_cartons')
+            .whereRaw("transfer_no IN (SELECT transfer_no FROM transfer_orders WHERE inbound_order_no = ?)", [inboundOrderNo])
+            .where({ carton_no: cartonNo })
+            .update({ last_mile_tracking_no: trackingNo });
+          if (result > 0) updated = true;
+        } else if (inboundOrderNo) {
+          const result = await db('transfer_cartons')
+            .whereRaw("transfer_no IN (SELECT transfer_no FROM transfer_orders WHERE inbound_order_no = ?)", [inboundOrderNo])
+            .update({ last_mile_tracking_no: trackingNo });
+          if (result > 0) updated = true;
+        } else if (cartonNo) {
+          const result = await db('transfer_cartons')
+            .where({ carton_no: cartonNo })
+            .update({ last_mile_tracking_no: trackingNo });
+          if (result > 0) updated = true;
+        }
+
+        if (updated) {
+          success++;
+        } else {
+          failed++;
+          errors.push({ row: rowNum, message: `未找到匹配的箱记录（入库单号: ${inboundOrderNo || '未提供'}, 箱号: ${cartonNo || '未提供'}）` });
+        }
+      } catch (err: any) {
+        failed++;
+        errors.push({ row: rowNum, message: err.message || '处理失败' });
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: { total: rows.length, success, failed, errors: errors.slice(0, 100) },
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: `导入失败: ${err.message || '未知错误'}` }, 500);
   }
 });
 

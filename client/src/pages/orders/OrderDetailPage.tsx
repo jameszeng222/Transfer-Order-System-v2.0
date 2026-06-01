@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, Download, Trash2 } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Download, Trash2, Upload } from 'lucide-react';
 import { api } from '../../api/client';
 import { TransferStatusLabel, TransportTypeLabel, StatusBadgeMap } from 'shared/constants';
 import type { TransferStatus, TransportType } from 'shared/constants';
@@ -9,7 +9,7 @@ import type { ColumnDef } from '../../components/ui';
 import { useExportStore } from '../../store/exportStore';
 
 interface CartonItem { id: number; carton_no: string; sku_code: string; sku_name: string; overseas_sku_code: string; product_name: string; qty: number; shelf_qty: number; }
-interface Carton { id: number; carton_no: string; logistics_tracking_no: string; logistics_carrier_order_no: string; carton_length: number; carton_width: number; carton_height: number; carton_weight: number; declared_value: number; departure_time: string; arrival_port_time: string; customs_clearance_time: string; last_mile_pickup_time: string; logistics_sign_time: string; unload_time: string; shelf_time: string; is_shelf_abnormal: number; shelf_abnormal_type: string; shelf_abnormal_remark: string; carton_items: CartonItem[]; }
+interface Carton { id: number; carton_no: string; logistics_tracking_no: string; logistics_carrier_order_no: string; last_mile_tracking_no: string; carton_length: number; carton_width: number; carton_height: number; carton_weight: number; declared_value: number; departure_time: string; arrival_port_time: string; customs_clearance_time: string; last_mile_pickup_time: string; logistics_sign_time: string; unload_time: string; shelf_time: string; is_shelf_abnormal: number; shelf_abnormal_type: string; shelf_abnormal_remark: string; carton_items: CartonItem[]; }
 interface OrderItem { id: number; sku_code: string; sku_name: string; overseas_sku_code: string; expected_qty: number; outbound_qty: number; inbound_qty: number; shelf_qty: number; shelf_shortage: number; outbound_diff: number; inbound_diff: number; total_diff: number; diff_reason: string; unit_weight: number; unit_volume: number; freight_cost_total: number; freight_cost_per_unit: number; }
 interface TrackingEvent { id: number; event_time: string; event_type: string; event_desc: string; location: string; operator: string; }
 interface ChangeLog { id: number; record_type: string; record_id: number; field_name: string; old_value: string; new_value: string; change_source: string; operator: string; change_time: string; reason: string; }
@@ -240,6 +240,9 @@ export default function OrderDetailPage() {
   const [nodeEditSubmitting, setNodeEditSubmitting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [lastMileImportOpen, setLastMileImportOpen] = useState(false);
+  const [lastMileImportLoading, setLastMileImportLoading] = useState(false);
+  const [lastMileImportResult, setLastMileImportResult] = useState<{ total: number; success: number; failed: number; errors: { row: number; message: string }[] } | null>(null);
 
   const { startCartonExport } = useExportStore();
 
@@ -260,6 +263,38 @@ export default function OrderDetailPage() {
       setDeleteConfirmOpen(false);
     }
   }, [order, navigate]);
+
+  const handleLastMileImport = useCallback(async (file: File) => {
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      alert('请选择 Excel 文件（.xlsx / .xls）');
+      return;
+    }
+    setLastMileImportLoading(true);
+    setLastMileImportResult(null);
+    try {
+      const token = localStorage.getItem('token');
+      const arrayBuffer = await file.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/orders/import-last-mile-tracking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ filename: file.name, data: base64 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLastMileImportResult(data.data);
+        if (data.data.success > 0 && transferNo) {
+          await fetchOrder(transferNo);
+        }
+      } else {
+        alert(data.error || '导入失败');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '导入失败');
+    } finally {
+      setLastMileImportLoading(false);
+    }
+  }, [transferNo, fetchOrder]);
 
   const NODE_STATUS_MAP: Record<string, TransferStatus> = {
     pickup_time: 'IN_TRANSIT',
@@ -478,9 +513,6 @@ export default function OrderDetailPage() {
           </div>
           <div className="flex gap-2 shrink-0">
             {nextStatus && <Button onClick={() => handleStatusChange(nextStatus.value)} loading={actionLoading}>{nextStatus.label}</Button>}
-            {order.status !== 'CANCELLED' && order.status !== 'COMPLETED' && (
-              <Button variant="danger" onClick={() => handleStatusChange('CANCELLED')} loading={actionLoading}>取消</Button>
-            )}
             <Button variant="ghost" icon={Trash2} onClick={() => setDeleteConfirmOpen(true)} className="text-red-500 hover:text-red-600 hover:bg-red-50">删除</Button>
           </div>
         </div>
@@ -572,7 +604,7 @@ export default function OrderDetailPage() {
           <div className="flex gap-1.5">
             <Button variant="secondary" size="sm" icon={Download} onClick={() => startCartonExport(order.transfer_no)}>导出箱单</Button>
             <Button variant="secondary" size="sm">导入箱规</Button>
-            <Button variant="secondary" size="sm">导入物流跟踪号</Button>
+            <Button variant="secondary" size="sm" icon={Upload} onClick={() => { setLastMileImportResult(null); setLastMileImportOpen(true); }}>导入尾程运单号</Button>
           </div>
         }>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 px-5 py-4 max-h-[480px] overflow-y-auto">
@@ -585,6 +617,8 @@ export default function OrderDetailPage() {
                 <div className="grid grid-cols-2 gap-1.5 text-xs">
                   <span className="text-text-tertiary">物流跟踪号</span>
                   <span className="text-text-secondary text-right">{ct.logistics_tracking_no || '—'}</span>
+                  <span className="text-text-tertiary">尾程运单号</span>
+                  <span className="text-text-secondary text-right">{ct.last_mile_tracking_no || '—'}</span>
                   <span className="text-text-tertiary">箱规</span>
                   <span className="text-text-secondary text-right">{ct.carton_length ? `${ct.carton_length}×${ct.carton_width}×${ct.carton_height}cm` : '—'}</span>
                   <span className="text-text-tertiary">重量</span>
@@ -785,6 +819,69 @@ export default function OrderDetailPage() {
           <div className="flex justify-end gap-2 pt-2 border-t border-border-light">
             <Button variant="secondary" onClick={() => setDeleteConfirmOpen(false)}>取消</Button>
             <Button variant="danger" loading={deleteLoading} onClick={handleDelete}>确认删除</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={lastMileImportOpen} onClose={() => setLastMileImportOpen(false)} title="导入尾程运单号" width="md">
+        <div className="space-y-4">
+          <div className="text-xs text-text-tertiary">
+            <p>上传包含尾程运单号的Excel文件，系统将按「第三方入库单号」+「箱号」匹配更新。</p>
+            <p className="mt-1">Excel表头需包含：<span className="font-medium text-text-secondary">第三方入库单号、箱号、尾程运单号</span></p>
+          </div>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            className="block w-full text-sm text-text-secondary file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-accent-light file:text-accent hover:file:bg-accent/20 cursor-pointer"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLastMileImport(f); e.target.value = ''; }}
+            disabled={lastMileImportLoading}
+          />
+          {lastMileImportLoading && (
+            <div className="flex items-center gap-2 text-sm text-accent">
+              <span className="animate-spin inline-block w-4 h-4 border-2 border-accent border-t-transparent rounded-full" />
+              导入中...
+            </div>
+          )}
+          {lastMileImportResult && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center p-3 bg-bg rounded-lg">
+                  <div className="text-lg font-semibold">{lastMileImportResult.total}</div>
+                  <div className="text-[10px] text-text-tertiary">总行数</div>
+                </div>
+                <div className="text-center p-3 bg-green-light rounded-lg">
+                  <div className="text-lg font-semibold text-green">{lastMileImportResult.success}</div>
+                  <div className="text-[10px] text-text-tertiary">成功</div>
+                </div>
+                <div className="text-center p-3 bg-red-light rounded-lg">
+                  <div className="text-lg font-semibold text-red">{lastMileImportResult.failed}</div>
+                  <div className="text-[10px] text-text-tertiary">失败</div>
+                </div>
+              </div>
+              {lastMileImportResult.errors.length > 0 && (
+                <div className="max-h-40 overflow-y-auto border border-border-light rounded-lg">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-bg">
+                        <th className="text-left px-3 py-2 font-medium text-text-tertiary">行号</th>
+                        <th className="text-left px-3 py-2 font-medium text-text-tertiary">错误信息</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lastMileImportResult.errors.map((err, idx) => (
+                        <tr key={idx} className="border-t border-border-light">
+                          <td className="px-3 py-2 text-text-secondary">{err.row}</td>
+                          <td className="px-3 py-2 text-text-primary">{err.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-light">
+            <Button variant="secondary" onClick={() => setLastMileImportOpen(false)}>关闭</Button>
           </div>
         </div>
       </Modal>
